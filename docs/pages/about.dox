@@ -1,0 +1,11 @@
+/**
+ * @page about About
+ * @section about-klv klv
+ * klv is a header-only C++23 library that decodes and encodes KLV
+ * (SMPTE 336) metadata. It includes definitions for MISB ST 0601 and
+ * MISB ST 0102.
+ *
+ * Each field is a struct with a tag, a name and a constexpr codec. Each set
+ * is a list of fields, and @c klv::record holds one typed value for each
+ * field of a set.
+ */
