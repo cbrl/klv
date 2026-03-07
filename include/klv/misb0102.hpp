@@ -249,10 +249,65 @@ struct classification_comments {
 	static constexpr codec::string format{};
 };
 
+struct umid_video {
+	static constexpr uint32_t tag = 15;
+	static constexpr std::string_view name = "UMID Video";
+	static constexpr codec::bytes format{};
+};
+
+struct umid_audio {
+	static constexpr uint32_t tag = 16;
+	static constexpr std::string_view name = "UMID Audio";
+	static constexpr codec::bytes format{};
+};
+
+struct umid_data {
+	static constexpr uint32_t tag = 17;
+	static constexpr std::string_view name = "UMID Data";
+	static constexpr codec::bytes format{};
+};
+
+struct umid_system {
+	static constexpr uint32_t tag = 18;
+	static constexpr std::string_view name = "UMID System";
+	static constexpr codec::bytes format{};
+};
+
+struct stream_id {
+	static constexpr uint32_t tag = 19;
+	static constexpr std::string_view name = "Stream ID";
+	static constexpr codec::integer<uint8_t> format{};
+};
+
+struct transport_stream_id {
+	static constexpr uint32_t tag = 20;
+	static constexpr std::string_view name = "Transport Stream ID";
+	static constexpr codec::integer<uint16_t> format{};
+};
+
+struct item_designator_id {
+	static constexpr uint32_t tag = 21;
+	static constexpr std::string_view name = "Item Designator ID";
+	static constexpr codec::bytes format{};
+};
+
 struct version {
 	static constexpr uint32_t tag = 22;
 	static constexpr std::string_view name = "Version";
 	static constexpr codec::integer<uint16_t> format{};
+};
+
+struct classifying_country_coding_method_version_date {
+	static constexpr uint32_t tag = 23;
+	static constexpr std::string_view name =
+	    "Classifying Country and Releasing Instructions Country Coding Method Version Date";
+	static constexpr codec::string format{};
+};
+
+struct object_country_coding_method_version_date {
+	static constexpr uint32_t tag = 24;
+	static constexpr std::string_view name = "Object Country Coding Method Version Date";
+	static constexpr codec::string format{};
 };
 
 // =====================================================================================================================
@@ -278,7 +333,16 @@ struct security_ls {
 	    object_country_coding_method,
 	    object_country_codes,
 	    classification_comments,
-	    version>;
+	    umid_video,
+	    umid_audio,
+	    umid_data,
+	    umid_system,
+	    stream_id,
+	    transport_stream_id,
+	    item_designator_id,
+	    version,
+	    classifying_country_coding_method_version_date,
+	    object_country_coding_method_version_date>;
 };
 
 }  // namespace klv::misb0102
