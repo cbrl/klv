@@ -10,6 +10,7 @@
 #include "klv/codecs/codec_type.hpp"
 #include "klv/codecs/enumeration.hpp"
 #include "klv/codecs/ieee754.hpp"
+#include "klv/codecs/imapb.hpp"
 #include "klv/codecs/integer.hpp"
 #include "klv/codecs/mapped.hpp"
 #include "klv/codecs/nested.hpp"

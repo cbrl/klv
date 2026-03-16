@@ -68,8 +68,9 @@ struct my_set {
 };
 ```
 
-The built-in codecs are `integer`, `mapped`, `string`, `timestamp`, `ieee754`,
-`enumeration`, `bytes`, and `nested` (a local set inside a field). A new value
+The built-in codecs are `integer`, `mapped`, `imapb` (MISB ST 1201), `string`,
+`timestamp`, `ieee754`, `enumeration`, `bytes`, and `nested` (a local set inside
+a field). A new value
 format is one new codec type. Each codec has its own header in
 [`include/klv/codecs/`](include/klv/codecs).
 

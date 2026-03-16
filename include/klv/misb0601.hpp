@@ -810,6 +810,34 @@ struct miis_core_identifier {
 	static constexpr codec::bytes format{};
 };
 
+struct target_width_extended {
+	static constexpr uint32_t tag = 96;
+	static constexpr std::string_view name = "Target Width Extended";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{0.0, 1'500'000.0, 3};
+};
+
+struct density_altitude_extended {
+	static constexpr uint32_t tag = 103;
+	static constexpr std::string_view name = "Density Altitude Extended";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
+struct sensor_ellipsoid_height_extended {
+	static constexpr uint32_t tag = 104;
+	static constexpr std::string_view name = "Sensor Ellipsoid Height Extended";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
+struct alternate_platform_ellipsoid_height_extended {
+	static constexpr uint32_t tag = 105;
+	static constexpr std::string_view name = "Alternate Platform Ellipsoid Height Extended";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
 struct stream_designator {
 	static constexpr uint32_t tag = 106;
 	static constexpr std::string_view name = "Stream Designator";
@@ -828,6 +856,13 @@ struct broadcast_source {
 	static constexpr codec::string format{.max_length = 127};
 };
 
+struct range_to_recovery_location {
+	static constexpr uint32_t tag = 109;
+	static constexpr std::string_view name = "Range To Recovery Location";
+	static constexpr std::string_view units = "km";
+	static constexpr codec::imapb format{0.0, 21'000.0, 3};
+};
+
 struct time_airborne {
 	static constexpr uint32_t tag = 110;
 	static constexpr std::string_view name = "Time Airborne";
@@ -840,6 +875,55 @@ struct propulsion_unit_speed {
 	static constexpr std::string_view name = "Propulsion Unit Speed";
 	static constexpr std::string_view units = "RPM";
 	static constexpr codec::integer<uint32_t> format{};
+};
+
+struct platform_course_angle {
+	static constexpr uint32_t tag = 112;
+	static constexpr std::string_view name = "Platform Course Angle";
+	static constexpr std::string_view units = "deg";
+	static constexpr codec::imapb format{0.0, 360.0, 3};
+};
+
+struct altitude_agl {
+	static constexpr uint32_t tag = 113;
+	static constexpr std::string_view name = "Altitude AGL";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
+struct radar_altimeter {
+	static constexpr uint32_t tag = 114;
+	static constexpr std::string_view name = "Radar Altimeter";
+	static constexpr std::string_view units = "m";
+	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
+struct sensor_azimuth_rate {
+	static constexpr uint32_t tag = 117;
+	static constexpr std::string_view name = "Sensor Azimuth Rate";
+	static constexpr std::string_view units = "deg/s";
+	static constexpr codec::imapb format{-1'000.0, 1'000.0, 3};
+};
+
+struct sensor_elevation_rate {
+	static constexpr uint32_t tag = 118;
+	static constexpr std::string_view name = "Sensor Elevation Rate";
+	static constexpr std::string_view units = "deg/s";
+	static constexpr codec::imapb format{-1'000.0, 1'000.0, 3};
+};
+
+struct sensor_roll_rate {
+	static constexpr uint32_t tag = 119;
+	static constexpr std::string_view name = "Sensor Roll Rate";
+	static constexpr std::string_view units = "deg/s";
+	static constexpr codec::imapb format{-1'000.0, 1'000.0, 3};
+};
+
+struct onboard_mi_storage_percent_full {
+	static constexpr uint32_t tag = 120;
+	static constexpr std::string_view name = "On-board MI Storage Percent Full";
+	static constexpr std::string_view units = "%";
+	static constexpr codec::imapb format{0.0, 100.0, 3};
 };
 
 struct number_of_navsats_in_view {
@@ -878,11 +962,25 @@ struct take_off_time {
 	static constexpr codec::timestamp format{};
 };
 
+struct transmission_frequency {
+	static constexpr uint32_t tag = 132;
+	static constexpr std::string_view name = "Transmission Frequency";
+	static constexpr std::string_view units = "MHz";
+	static constexpr codec::imapb format{1.0, 99'999.0, 3};
+};
+
 struct onboard_mi_storage_capacity {
 	static constexpr uint32_t tag = 133;
 	static constexpr std::string_view name = "On-board MI Storage Capacity";
 	static constexpr std::string_view units = "GB";
 	static constexpr codec::integer<uint32_t> format{};
+};
+
+struct zoom_percentage {
+	static constexpr uint32_t tag = 134;
+	static constexpr std::string_view name = "Zoom Percentage";
+	static constexpr std::string_view units = "%";
+	static constexpr codec::imapb format{0.0, 100.0, 3};
 };
 
 struct communications_method {
@@ -1006,18 +1104,32 @@ struct uas_datalink_ls {
 	    platform_angle_of_attack_full,
 	    platform_sideslip_angle_full,
 	    miis_core_identifier,
+	    target_width_extended,
+	    density_altitude_extended,
+	    sensor_ellipsoid_height_extended,
+	    alternate_platform_ellipsoid_height_extended,
 	    stream_designator,
 	    operational_base,
 	    broadcast_source,
+	    range_to_recovery_location,
 	    time_airborne,
 	    propulsion_unit_speed,
+	    platform_course_angle,
+	    altitude_agl,
+	    radar_altimeter,
+	    sensor_azimuth_rate,
+	    sensor_elevation_rate,
+	    sensor_roll_rate,
+	    onboard_mi_storage_percent_full,
 	    number_of_navsats_in_view,
 	    positioning_method_source,
 	    platform_status,
 	    sensor_control_mode,
 	    target_id,
 	    take_off_time,
+	    transmission_frequency,
 	    onboard_mi_storage_capacity,
+	    zoom_percentage,
 	    communications_method,
 	    leap_seconds,
 	    correction_offset,
