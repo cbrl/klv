@@ -26,9 +26,12 @@ namespace klv::codec {
  * The byte length sets the precision. Decoding accepts each length from 1 to 8 bytes and uses the mapping for that
  * length. Encoding writes `length` bytes and truncates to the raw value below, as ST 1201 specifies.
  *
- * A raw value with the most significant bit set is an ST 1201 special value. Decoding gives
- * `field_error::error_indicator` for infinity and NaN, and `field_error::invalid_value` for the other special values.
- * Encoding writes the special value for NaN and for infinity, and fails for a finite value outside [min, max].
+ * A raw value with the most significant bit and any other bit set is an ST 1201 special value. Decoding gives:
+ * - `field_error::error_indicator` for infinity and NaN
+ * - `field_error::out_of_range` for "below minimum" and "above maximum"
+ * - `field_error::invalid_value` for user-defined and reserved values
+ *
+ * Encoding writes the special value for NaN, for infinity, and for a finite value outside [min, max].
  *
  * @code
  * static constexpr codec::imapb format{-900.0, 40'000.0, 3};
@@ -69,7 +72,10 @@ public:
 	[[nodiscard]]
 	auto to_real(uint64_t raw, size_t length) const noexcept -> double {
 		auto const scale = scale_for(length);
-		return scale.reverse * (static_cast<double>(raw) - scale.offset) + min_;
+		auto const value = scale.reverse * (static_cast<double>(raw) - scale.offset) + min_;
+
+		// ST 1201 requires an exact zero. Remove the rounding error of the zero offset.
+		return std::abs(value) < scale.reverse / 2.0 ? 0.0 : value;
 	}
 
 	/// Convert a real value in [min, max] to its raw integer of `length` bytes
@@ -78,8 +84,8 @@ public:
 		auto const scale = scale_for(length);
 		auto const scaled = std::floor(scale.forward * (value - min_) + scale.offset);
 
-		// When max - min is a power of two, max maps to the special value flag. Use the largest normal value instead.
-		auto const limit = largest_raw(length);
+		// When max - min is a power of two, max maps to the most significant bit alone. That is a normal value.
+		auto const limit = uint64_t{1} << (length * 8 - 1);
 		if (scaled <= 0.0) {
 			return 0;
 		}
@@ -95,12 +101,11 @@ public:
 			return std::unexpected(field_error::bad_length);
 		}
 
-		auto const first = std::to_integer<uint8_t>(in.front());
-		if ((first & special_flag) != 0) {
-			return std::unexpected(is_ieee_special(first) ? field_error::error_indicator : field_error::invalid_value);
-		}
-
 		auto const raw = read_big_endian<uint64_t>(in);
+		auto const flag = uint64_t{1} << (in.size() * 8 - 1);
+		if ((raw & flag) != 0 && raw != flag) {
+			return std::unexpected(special_error(std::to_integer<uint8_t>(in.front())));
+		}
 		if (raw > to_raw(max_, in.size())) {
 			return std::unexpected(field_error::out_of_range);
 		}
@@ -111,17 +116,19 @@ public:
 	auto encode(double value, byte_writer& out) const -> encode_result {
 		if (std::isnan(value)) {
 			put_special(std::signbit(value) ? negative_quiet_nan : positive_quiet_nan, out);
-			return {};
 		}
-		if (std::isinf(value)) {
+		else if (std::isinf(value)) {
 			put_special(value > 0.0 ? positive_infinity : negative_infinity, out);
-			return {};
 		}
-		if (value < min_ || value > max_) {
-			return std::unexpected(field_error::out_of_range);
+		else if (value < min_) {
+			put_special(below_minimum, out);
 		}
-
-		out.put_big_endian(to_raw(value, length_), length_);
+		else if (value > max_) {
+			put_special(above_maximum, out);
+		}
+		else {
+			out.put_big_endian(to_raw(value, length_), length_);
+		}
 		return {};
 	}
 
@@ -138,15 +145,18 @@ public:
 	}
 
 private:
-	// First byte of the ST 1201 special values. The other bits of the value are zero.
-	static constexpr auto special_flag = uint8_t{0x80};
-	static constexpr auto special_mask = uint8_t{0xF8};
+	// First byte of the ST 1201 special values. The top 5 bits identify the kind. The other bits of an encoded value
+	// are zero.
+	static constexpr auto kind_mask = uint8_t{0xF8};
 	static constexpr auto positive_infinity = uint8_t{0xC8};
 	static constexpr auto negative_infinity = uint8_t{0xE8};
 	static constexpr auto positive_quiet_nan = uint8_t{0xD0};
 	static constexpr auto negative_quiet_nan = uint8_t{0xF0};
 	static constexpr auto positive_signaling_nan = uint8_t{0xD8};
 	static constexpr auto negative_signaling_nan = uint8_t{0xF8};
+	static constexpr auto misb_special = uint8_t{0xE0};  ///< The next 3 bits identify the MISB special value
+	static constexpr auto below_minimum = uint8_t{0xE0};
+	static constexpr auto above_maximum = uint8_t{0xE1};
 
 	/// ST 1201 scale factors (sF, sR) and zero offset (zOffset) for one byte length
 	struct scale_factors {
@@ -171,24 +181,22 @@ private:
 		return power;
 	}
 
-	/// Largest raw value without the special value flag
+	/// Decode error for a special value with the given first byte
 	[[nodiscard]]
-	static constexpr auto largest_raw(size_t length) noexcept -> uint64_t {
-		return (uint64_t{1} << (length * 8 - 1)) - 1;
-	}
-
-	[[nodiscard]]
-	static constexpr auto is_ieee_special(uint8_t first) noexcept -> bool {
-		switch (static_cast<uint8_t>(first & special_mask)) {
+	static constexpr auto special_error(uint8_t first) noexcept -> field_error {
+		switch (static_cast<uint8_t>(first & kind_mask)) {
 			case positive_infinity:
 			case negative_infinity:
 			case positive_quiet_nan:
 			case negative_quiet_nan:
 			case positive_signaling_nan:
 			case negative_signaling_nan:
-				return true;
+				return field_error::error_indicator;
+			case misb_special:
+				return first == below_minimum || first == above_maximum ? field_error::out_of_range
+				                                                        : field_error::invalid_value;
 			default:
-				return false;
+				return field_error::invalid_value;
 		}
 	}
 
@@ -198,8 +206,8 @@ private:
 		auto const forward = std::ldexp(1.0, d_pow - b_pow_);
 		auto const reverse = std::ldexp(1.0, b_pow_ - d_pow);
 
-		// A negative min gets an offset so that zero maps to an exact raw value
-		auto const offset = min_ < 0.0 ? forward * min_ - std::floor(forward * min_) : 0.0;
+		// A range that contains zero gets an offset, so that zero maps to an exact raw value
+		auto const offset = min_ < 0.0 && max_ > 0.0 ? forward * min_ - std::floor(forward * min_) : 0.0;
 		return {.forward = forward, .reverse = reverse, .offset = offset};
 	}
 

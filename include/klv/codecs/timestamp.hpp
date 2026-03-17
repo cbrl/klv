@@ -11,6 +11,7 @@
 #include "klv/field.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
@@ -21,13 +22,22 @@ namespace klv::codec {
 
 /**
  * @brief MISB precision time stamp: 64-bit unsigned count of microseconds since the POSIX epoch
+ *
+ * Decoding accepts `min_length` to 8 bytes. Encoding always writes 8 bytes.
+ *
+ * @code
+ * static constexpr codec::timestamp format{};                  // Exactly 8 bytes
+ * static constexpr codec::timestamp format{.min_length = 1};  // 1 to 8 bytes
+ * @endcode
  */
 struct timestamp {
 	using value_type = klv::timestamp;
 
+	size_t min_length = sizeof(uint64_t);
+
 	[[nodiscard]]
 	constexpr auto decode(byte_span in) const -> field<klv::timestamp> {
-		if (in.size() != sizeof(uint64_t)) {
+		if (in.size() < min_length || in.empty() || in.size() > sizeof(uint64_t)) {
 			return std::unexpected(field_error::bad_length);
 		}
 
