@@ -4,6 +4,13 @@
  *
  * The primary metadata set of Unmanned Aircraft Systems motion imagery. Each struct below is a static field
  * descriptor. `uas_datalink_ls` lists the fields in encode order: Precision Time Stamp first, Checksum last.
+ *
+ * The value types and codecs of the pack fields (for example `waypoint_list`) are in `misb0601_packs.hpp`.
+ * 
+ * These tags are not defined here, so they decode as unknown fields:
+ * - 66 (deprecated)
+ * - 73, 74, 95, and 97 to 102 (local sets and packs of other MISB standards)
+ * - 143 (Metadata Substream ID Pack)
  */
 
 #pragma once
@@ -11,6 +18,7 @@
 #include "bytes.hpp"
 #include "codec.hpp"
 #include "misb0102.hpp"
+#include "misb0601_packs.hpp"
 #include "set.hpp"
 
 #include <cstdint>
@@ -462,7 +470,7 @@ struct outside_air_temperature {
 	static constexpr uint32_t tag = 39;
 	static constexpr std::string_view name = "Outside Air Temperature";
 	static constexpr std::string_view units = "degC";
-	static constexpr codec::integer<int8_t> format{};
+	static constexpr codec::mapped<int8_t> format{-127.0, 127.0, codec::sentinel::reserve_min};
 };
 
 struct target_location_latitude {
@@ -720,6 +728,12 @@ struct sensor_east_velocity {
 	static constexpr codec::mapped<int16_t> format{-327.0, 327.0, codec::sentinel::reserve_min};
 };
 
+struct image_horizon_pixel_pack {
+	static constexpr uint32_t tag = 81;
+	static constexpr std::string_view name = "Image Horizon Pixel Pack";
+	static constexpr horizon_pixels_codec format{};
+};
+
 struct corner_latitude_point_1_full {
 	static constexpr uint32_t tag = 82;
 	static constexpr std::string_view name = "Corner Latitude Point 1 (Full)";
@@ -860,7 +874,7 @@ struct range_to_recovery_location {
 	static constexpr uint32_t tag = 109;
 	static constexpr std::string_view name = "Range To Recovery Location";
 	static constexpr std::string_view units = "km";
-	static constexpr codec::imapb format{0.0, 21'000.0, 3};
+	static constexpr codec::imapb format{0.0, 21'000.0, 4};
 };
 
 struct time_airborne {
@@ -881,7 +895,7 @@ struct platform_course_angle {
 	static constexpr uint32_t tag = 112;
 	static constexpr std::string_view name = "Platform Course Angle";
 	static constexpr std::string_view units = "deg";
-	static constexpr codec::imapb format{0.0, 360.0, 3};
+	static constexpr codec::imapb format{0.0, 360.0, 2};
 };
 
 struct altitude_agl {
@@ -896,6 +910,19 @@ struct radar_altimeter {
 	static constexpr std::string_view name = "Radar Altimeter";
 	static constexpr std::string_view units = "m";
 	static constexpr codec::imapb format{-900.0, 40'000.0, 3};
+};
+
+/// A set holds one Control Command. When a packet repeats the tag, the last one remains.
+struct control_command {
+	static constexpr uint32_t tag = 115;
+	static constexpr std::string_view name = "Control Command";
+	static constexpr command_record_codec format{};
+};
+
+struct control_command_verification_list {
+	static constexpr uint32_t tag = 116;
+	static constexpr std::string_view name = "Control Command Verification List";
+	static constexpr codec::ber_oid_list format{};
 };
 
 struct sensor_azimuth_rate {
@@ -923,7 +950,19 @@ struct onboard_mi_storage_percent_full {
 	static constexpr uint32_t tag = 120;
 	static constexpr std::string_view name = "On-board MI Storage Percent Full";
 	static constexpr std::string_view units = "%";
-	static constexpr codec::imapb format{0.0, 100.0, 3};
+	static constexpr codec::imapb format{0.0, 100.0, 2};
+};
+
+struct active_wavelength_list {
+	static constexpr uint32_t tag = 121;
+	static constexpr std::string_view name = "Active Wavelength List";
+	static constexpr codec::ber_oid_list format{};
+};
+
+struct country_codes {
+	static constexpr uint32_t tag = 122;
+	static constexpr std::string_view name = "Country Codes";
+	static constexpr countries_codec format{};
 };
 
 struct number_of_navsats_in_view {
@@ -950,16 +989,36 @@ struct sensor_control_mode {
 	static constexpr codec::enumeration<control_mode> format{.name_of = &to_string};
 };
 
+struct sensor_frame_rate_pack {
+	static constexpr uint32_t tag = 127;
+	static constexpr std::string_view name = "Sensor Frame Rate Pack";
+	static constexpr std::string_view units = "fps";
+	static constexpr frame_rate_codec format{};
+};
+
+struct wavelengths_list {
+	static constexpr uint32_t tag = 128;
+	static constexpr std::string_view name = "Wavelengths List";
+	static constexpr std::string_view units = "nm";
+	static constexpr codec::series<wavelength_record_codec> format{};
+};
+
 struct target_id {
 	static constexpr uint32_t tag = 129;
 	static constexpr std::string_view name = "Target ID";
 	static constexpr codec::string format{.max_length = 32};
 };
 
+struct airbase_locations {
+	static constexpr uint32_t tag = 130;
+	static constexpr std::string_view name = "Airbase Locations";
+	static constexpr airbases_codec format{};
+};
+
 struct take_off_time {
 	static constexpr uint32_t tag = 131;
 	static constexpr std::string_view name = "Take-off Time";
-	static constexpr codec::timestamp format{};
+	static constexpr codec::timestamp format{.min_length = 1};
 };
 
 struct transmission_frequency {
@@ -980,7 +1039,7 @@ struct zoom_percentage {
 	static constexpr uint32_t tag = 134;
 	static constexpr std::string_view name = "Zoom Percentage";
 	static constexpr std::string_view units = "%";
-	static constexpr codec::imapb format{0.0, 100.0, 3};
+	static constexpr codec::imapb format{0.0, 100.0, 1};
 };
 
 struct communications_method {
@@ -1001,6 +1060,38 @@ struct correction_offset {
 	static constexpr std::string_view name = "Correction Offset";
 	static constexpr std::string_view units = "us";
 	static constexpr codec::integer<int64_t> format{};
+};
+
+struct payload_list {
+	static constexpr uint32_t tag = 138;
+	static constexpr std::string_view name = "Payload List";
+	static constexpr payloads_codec format{};
+};
+
+/// Bit n set: payload n of the Payload List (tag 138) is active
+struct active_payloads {
+	static constexpr uint32_t tag = 139;
+	static constexpr std::string_view name = "Active Payloads";
+	static constexpr codec::integer<uint64_t> format{};
+};
+
+struct weapons_stores {
+	static constexpr uint32_t tag = 140;
+	static constexpr std::string_view name = "Weapons Stores";
+	static constexpr codec::series<weapons_store_codec> format{};
+};
+
+struct waypoint_list {
+	static constexpr uint32_t tag = 141;
+	static constexpr std::string_view name = "Waypoint List";
+	static constexpr codec::series<waypoint_record_codec> format{};
+};
+
+struct view_domain {
+	static constexpr uint32_t tag = 142;
+	static constexpr std::string_view name = "View Domain";
+	static constexpr std::string_view units = "deg";
+	static constexpr view_ranges_codec format{};
 };
 
 // =====================================================================================================================
@@ -1091,6 +1182,7 @@ struct uas_datalink_ls {
 	    frame_center_height_above_ellipsoid,
 	    sensor_north_velocity,
 	    sensor_east_velocity,
+	    image_horizon_pixel_pack,
 	    corner_latitude_point_1_full,
 	    corner_longitude_point_1_full,
 	    corner_latitude_point_2_full,
@@ -1117,15 +1209,22 @@ struct uas_datalink_ls {
 	    platform_course_angle,
 	    altitude_agl,
 	    radar_altimeter,
+	    control_command,
+	    control_command_verification_list,
 	    sensor_azimuth_rate,
 	    sensor_elevation_rate,
 	    sensor_roll_rate,
 	    onboard_mi_storage_percent_full,
+	    active_wavelength_list,
+	    country_codes,
 	    number_of_navsats_in_view,
 	    positioning_method_source,
 	    platform_status,
 	    sensor_control_mode,
+	    sensor_frame_rate_pack,
+	    wavelengths_list,
 	    target_id,
+	    airbase_locations,
 	    take_off_time,
 	    transmission_frequency,
 	    onboard_mi_storage_capacity,
@@ -1133,6 +1232,11 @@ struct uas_datalink_ls {
 	    communications_method,
 	    leap_seconds,
 	    correction_offset,
+	    payload_list,
+	    active_payloads,
+	    weapons_stores,
+	    waypoint_list,
+	    view_domain,
 	    checksum>;
 };
 

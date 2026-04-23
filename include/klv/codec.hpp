@@ -14,6 +14,7 @@
 #include "klv/codecs/integer.hpp"
 #include "klv/codecs/mapped.hpp"
 #include "klv/codecs/nested.hpp"
+#include "klv/codecs/series.hpp"
 #include "klv/codecs/string.hpp"
 #include "klv/codecs/timestamp.hpp"
 #include "klv/field.hpp"
