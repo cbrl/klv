@@ -72,9 +72,10 @@ The built-in codecs are `integer`, `mapped`, `imapb` (MISB ST 1201), `string`,
 `timestamp`, `ieee754`, `enumeration`, `bytes`, `nested` (a local set inside a
 field), `series` (length-prefixed elements), and `ber_oid_list`. A new value
 format is one new codec type. Each codec has its own header in
-[`include/klv/codecs/`](include/klv/codecs). The ST 0601 packs, such as the
-Waypoint List, have their value types and codecs in
-[`include/klv/misb0601_packs.hpp`](include/klv/misb0601_packs.hpp).
+[`include/klv/codecs/`](include/klv/codecs).
+
+The MISB definitions are in [`include/klv/misb0102/`](include/klv/misb0102)
+and [`include/klv/misb0601/`](include/klv/misb0601).
 
 # Building and installing
 
