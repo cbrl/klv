@@ -35,29 +35,14 @@ constexpr auto is_checksum_field() noexcept -> bool {
 	}
 }
 
-template<field_descriptor E>
+/// Write the tag of `E` and the value that `write_value` writes, with its length
+template<field_descriptor E, typename F>
 [[nodiscard]]
-auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<void> {
-	// An absent field, or a field that did not decode, has nothing to write
-	if (!value && value.error() != field_error::error_indicator) {
-		return {};
-	}
-
+auto encode_occurrence(byte_writer& out, F&& write_value) -> result<void> {
 	auto const start = out.size();
 	out.put_ber_oid(E::tag);
 
-	auto const status = out.put_length_prefixed([&]() -> encode_result {
-		if (value) {
-			return E::format.encode(*value, out);
-		}
-		if constexpr (has_error_indicator<codec_of<E>>) {
-			return E::format.encode_error_indicator(out);
-		}
-		else {
-			return std::unexpected(field_error::invalid_value);
-		}
-	});
-
+	auto const status = out.put_length_prefixed(std::forward<F>(write_value));
 	if (!status) {
 		out.truncate(start);
 		return make_error(
@@ -72,6 +57,44 @@ auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<vo
 		);
 	}
 	return {};
+}
+
+/// Write one field. A repeated field writes one occurrence for each item.
+template<field_descriptor E>
+[[nodiscard]]
+auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<void> {
+	// An absent field, or a field that did not decode, has nothing to write
+	if (!value && value.error() != field_error::error_indicator) {
+		return {};
+	}
+
+	if constexpr (repeated_codec<codec_of<E>>) {
+		if (!value) {
+			return encode_occurrence<E>(out, []() -> encode_result {
+				return std::unexpected(field_error::invalid_value);
+			});
+		}
+		for (auto const& item : *value) {
+			auto status = encode_occurrence<E>(out, [&] { return E::format.item.encode(item, out); });
+			if (!status) {
+				return status;
+			}
+		}
+		return {};
+	}
+	else {
+		return encode_occurrence<E>(out, [&]() -> encode_result {
+			if (value) {
+				return E::format.encode(*value, out);
+			}
+			if constexpr (has_error_indicator<codec_of<E>>) {
+				return E::format.encode_error_indicator(out);
+			}
+			else {
+				return std::unexpected(field_error::invalid_value);
+			}
+		});
+	}
 }
 
 /// Write the fields of a record in definition order, then its unknown fields. The checksum field is not written.

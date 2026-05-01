@@ -9,7 +9,9 @@
 
 #include "klv/bytes/byte_reader.hpp"
 #include "klv/bytes/types.hpp"
+#include "klv/codecs/codec_type.hpp"
 #include "klv/error.hpp"
+#include "klv/field.hpp"
 #include "klv/set/definition.hpp"
 #include "klv/set/record.hpp"
 
@@ -32,7 +34,23 @@ namespace detail {
 
 template<local_set_definition S, typename E>
 auto decode_into(record<S>& rec, byte_span bytes) -> void {
-	rec.template assign<E>(E::format.decode(bytes));
+	if constexpr (repeated_codec<codec_of<E>>) {
+		// An earlier occurrence that did not decode keeps its error
+		if (auto const& current = rec.template get<E>(); !current && current.error() != field_error::absent) {
+			return;
+		}
+
+		auto item = E::format.item.decode(bytes);
+		if (item) {
+			rec.template add<E>(std::move(*item));
+		}
+		else {
+			rec.template assign<E>(std::unexpected(item.error()));
+		}
+	}
+	else {
+		rec.template assign<E>(E::format.decode(bytes));
+	}
 }
 
 template<local_set_definition S, typename List = typename S::fields>

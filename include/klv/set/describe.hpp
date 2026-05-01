@@ -10,6 +10,7 @@
 #include "klv/set/definition.hpp"
 #include "klv/set/record.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -51,6 +52,14 @@ auto describe_into(
 				return;
 			}
 		}
+		else if constexpr (is_record_list<value_t<E>>::value) {
+			if (value && !value->empty()) {
+				for (auto i = size_t{0}; i < value->size(); ++i) {
+					describe_into((*value)[i], full_name(std::format("{}[{}]", E::name, i)), include_absent, out);
+				}
+				return;
+			}
+		}
 
 		out.push_back(
 		    field_text{
@@ -80,7 +89,8 @@ auto describe_into(
  * @brief Flat display list of a record, for logs and user interfaces
  *
  * The list contains the fields in definition order, then the unknown fields. A decoded nested set adds its own fields
- * with the name prefix "<nested field name>.".
+ * with the name prefix "<nested field name>.". A list of nested sets adds the fields of each set with the name prefix
+ * "<nested field name>[<index>].".
  *
  * @param include_absent Also list the fields that are absent
  */

@@ -1,6 +1,6 @@
 /**
  * @file klv/codecs/ieee754.hpp
- * @brief IEEE 754 floating-point codec
+ * @brief IEEE 754 floating-point codecs
  */
 
 #pragma once
@@ -8,13 +8,18 @@
 #include "klv/bytes/big_endian.hpp"
 #include "klv/bytes/byte_writer.hpp"
 #include "klv/bytes/types.hpp"
+#include "klv/codecs/integer.hpp"
+#include "klv/codecs/pack.hpp"
 #include "klv/field.hpp"
 
 #include <bit>
+#include <cmath>
 #include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -45,6 +50,46 @@ struct ieee754 {
 
 	[[nodiscard]]
 	auto to_string(F value) const -> std::string {
+		return std::format("{}", value);
+	}
+};
+
+/**
+ * @brief IEEE 754 value of either precision: binary32 (4 bytes) or binary64 (8 bytes)
+ *
+ * Decoding accepts both lengths. Encoding writes `length` bytes. With `variable_length`, it writes 4 bytes when a
+ * binary32 value holds the value exactly, and 8 bytes otherwise.
+ *
+ * @code
+ * static constexpr codec::ieee754_variable format{};                // 4 or 8 bytes
+ * static constexpr codec::ieee754_variable format{.length = 8};     // 8 bytes
+ * @endcode
+ */
+struct ieee754_variable {
+	using value_type = double;
+
+	size_t length = variable_length;
+
+	[[nodiscard]]
+	auto decode(byte_span in) const -> field<double> {
+		return detail::read_ieee(in);
+	}
+
+	[[nodiscard]]
+	auto encode(double value, byte_writer& out) const -> encode_result {
+		if (length != variable_length) {
+			return detail::put_ieee(value, length, out);
+		}
+		// A finite value is exact in binary32 when the round trip keeps its bits
+		auto const exact = !std::isfinite(value)
+		    || (std::abs(value) <= double{std::numeric_limits<float>::max()}
+		        && std::bit_cast<uint64_t>(static_cast<double>(static_cast<float>(value)))
+		               == std::bit_cast<uint64_t>(value));
+		return detail::put_ieee(value, exact ? sizeof(float) : sizeof(double), out);
+	}
+
+	[[nodiscard]]
+	auto to_string(double value) const -> std::string {
 		return std::format("{}", value);
 	}
 };

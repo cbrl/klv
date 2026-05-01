@@ -7,7 +7,7 @@
 
 #include "klv/bytes.hpp"
 #include "klv/codec.hpp"
-#include "klv/misb0601/packs/detail.hpp"
+#include "klv/codecs/pack.hpp"
 
 #include <array>
 #include <cstddef>

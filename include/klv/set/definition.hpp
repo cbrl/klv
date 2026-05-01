@@ -89,6 +89,28 @@ struct list_contains : std::false_type {};
 template<typename E, typename... F>
 struct list_contains<E, field_list<F...>> : std::bool_constant<(std::same_as<E, F> || ...)> {};
 
+template<typename... Lists>
+struct concat_lists {
+	using type = field_list<>;
+};
+
+template<typename... F>
+struct concat_lists<field_list<F...>> {
+	using type = field_list<F...>;
+};
+
+template<typename... F, typename... G, typename... Rest>
+struct concat_lists<field_list<F...>, field_list<G...>, Rest...> : concat_lists<field_list<F..., G...>, Rest...> {};
+
+template<typename List, typename... Excluded>
+struct without_fields;
+
+template<typename... F, typename... Excluded>
+struct without_fields<field_list<F...>, Excluded...> {
+	using type = typename concat_lists<
+	    std::conditional_t<list_contains<F, field_list<Excluded...>>::value, field_list<>, field_list<F>>...>::type;
+};
+
 /// Largest tag for which a set uses a dense tag-to-index table
 inline constexpr auto max_dense_tag = uint32_t{4'096};
 
@@ -127,6 +149,14 @@ struct list_info<field_list<F...>> {
 };
 
 }  // namespace detail
+
+/**
+ * @brief The field list `List` without the fields `Excluded...`, in the same order
+ *
+ * The fields can be incomplete types, so a set can define a child set from its own list (see MISB ST 1607).
+ */
+template<typename List, typename... Excluded>
+using fields_without = typename detail::without_fields<List, Excluded...>::type;
 
 /// A struct with a display `name` and a `fields` list
 template<typename S>

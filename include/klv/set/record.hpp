@@ -88,6 +88,17 @@ public:
 		slot<E>().value = std::move(value);
 	}
 
+	/// Append one item to the repeated field `E`. A field without a value starts a new list.
+	template<member_of<S> E>
+	requires repeated_codec<codec_of<E>>
+	auto add(typename codec_of<E>::item_type item) -> void {
+		auto& value = slot<E>().value;
+		if (!value) {
+			value.emplace();
+		}
+		value->push_back(std::move(item));
+	}
+
 	/// Mark field `E` with the error value of its format. Encoding writes that value.
 	template<member_of<S> E>
 	requires has_error_indicator<codec_of<E>>
@@ -145,6 +156,12 @@ struct is_record : std::false_type {};
 
 template<typename S>
 struct is_record<record<S>> : std::true_type {};
+
+template<typename T>
+struct is_record_list : std::false_type {};
+
+template<typename S>
+struct is_record_list<std::vector<record<S>>> : std::true_type {};
 
 }  // namespace detail
 

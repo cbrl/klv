@@ -12,6 +12,9 @@
  * - `encode(value_type const&, byte_writer&) -> encode_result`
  * - `to_string(value_type const&) -> std::string`
  * - optionally `encode_error_indicator(byte_writer&) -> encode_result`, for formats with an error value
+ *
+ * A repeated codec (see `codec::repeated`) also has an `item` codec and an `item_type`. A set can hold its field more
+ * than once.
  */
 
 #pragma once
@@ -22,6 +25,8 @@
 
 #include <concepts>
 #include <string>
+#include <type_traits>
+#include <vector>
 
 namespace klv {
 
@@ -37,6 +42,14 @@ concept codec_type = requires(C const& codec, byte_span in, typename C::value_ty
 template<typename C>
 concept has_error_indicator = codec_type<C> && requires(C const& codec, byte_writer& out) {
 	{ codec.encode_error_indicator(out) } -> std::same_as<encode_result>;
+};
+
+/// A codec of a field that a set can hold more than once. The value is a list with one item for each occurrence.
+template<typename C>
+concept repeated_codec = codec_type<C> && requires(C const& codec) {
+	typename C::item_type;
+	requires codec_type<std::remove_cvref_t<decltype(codec.item)>>;
+	requires std::same_as<typename C::value_type, std::vector<typename C::item_type>>;
 };
 
 }  // namespace klv
