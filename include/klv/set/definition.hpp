@@ -153,7 +153,7 @@ struct list_info<field_list<F...>> {
 /**
  * @brief The field list `List` without the fields `Excluded...`, in the same order
  *
- * The fields can be incomplete types, so a set can define a child set from its own list (see MISB ST 1607).
+ * The fields can be incomplete types. Thus, a set can define a child set (MISB ST 1607) from its own list.
  */
 template<typename List, typename... Excluded>
 using fields_without = typename detail::without_fields<List, Excluded...>::type;
