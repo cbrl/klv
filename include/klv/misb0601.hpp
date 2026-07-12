@@ -4,10 +4,17 @@
  *
  * The primary metadata set of Unmanned Aircraft Systems motion imagery.
  *
- * These tags are not defined, so they decode as unknown fields:
- * - 66 (deprecated)
- * - 73, 74, 95, and 97 to 102 (local sets and packs of other MISB standards)
- * - 143 (Metadata Substream ID Pack)
+ * The local sets of other MISB standards nest in these tags:
+ * - 48: ST 0102 Security
+ * - 73: ST 0806 Remote Video Terminal
+ * - 74: ST 0903 Video Moving Target Indicator
+ * - 95: ST 1206 SAR Motion Imagery
+ * - 97: ST 1002 Range Image
+ * - 98: ST 1601 Geo-Registration
+ * - 99: ST 1602 Composite Imaging
+ * - 100 and 101: ST 1607 Segment and Amend (child sets of ST 0601)
+ *
+ * Tags 66 (deprecated) and 143 (Metadata Substream ID Pack) are not defined, so they decode as unknown fields.
  */
 
 #pragma once
