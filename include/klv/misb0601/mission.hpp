@@ -10,6 +10,7 @@
 #include "klv/misb0601/enumerations.hpp"
 #include "klv/misb0601/packs/command_record.hpp"
 #include "klv/misb0601/packs/countries.hpp"
+#include "klv/misb0806/rvt_ls.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -70,6 +71,12 @@ struct event_start_time_utc {
 	static constexpr codec::timestamp format{};
 };
 
+struct rvt_local_set {
+	static constexpr uint32_t tag = 73;
+	static constexpr std::string_view name = "RVT Local Set";
+	static constexpr codec::nested<misb0806::rvt_ls> format{};
+};
+
 struct operational_mode {
 	static constexpr uint32_t tag = 77;
 	static constexpr std::string_view name = "Operational Mode";
@@ -100,11 +107,11 @@ struct broadcast_source {
 	static constexpr codec::string format{.max_length = 127};
 };
 
-/// A set holds one Control Command. When a packet repeats the tag, the last one remains.
+/// The set can hold the field more than once: one Control Command for each command
 struct control_command {
 	static constexpr uint32_t tag = 115;
 	static constexpr std::string_view name = "Control Command";
-	static constexpr command_record_codec format{};
+	static constexpr codec::repeated<command_record_codec> format{};
 };
 
 struct control_command_verification_list {

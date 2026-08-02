@@ -31,6 +31,10 @@ target_include_directories(
 # std::expected and std::generator
 target_compile_features(klv_klv INTERFACE cxx_std_23)
 
+# The nested MISB sets instantiate many templates. With MSVC, a source file that uses ST 0601 needs more object
+# file sections than the default limit.
+target_compile_options(klv_klv INTERFACE "$<$<CXX_COMPILER_ID:MSVC>:/bigobj>")
+
 # ---- Install rules ----
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)

@@ -1,12 +1,16 @@
 /**
  * @file klv/misb0601/image.hpp
- * @brief MISB ST 0601 fields: image frame geometry (frame center, corners, horizon, and ranges)
+ * @brief MISB ST 0601 fields: image frame geometry (frame center, corners, horizon, and ranges), range images,
+ * geo-registration, and composite imaging
  */
 
 #pragma once
 
 #include "klv/codec.hpp"
 #include "klv/misb0601/packs/horizon_pixels.hpp"
+#include "klv/misb1002/range_image_ls.hpp"
+#include "klv/misb1601.hpp"
+#include "klv/misb1602.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -185,6 +189,24 @@ struct target_width_extended {
 	static constexpr std::string_view name = "Target Width Extended";
 	static constexpr std::string_view units = "m";
 	static constexpr codec::imapb format{0.0, 1'500'000.0, 3};
+};
+
+struct range_image_local_set {
+	static constexpr uint32_t tag = 97;
+	static constexpr std::string_view name = "Range Image Local Set";
+	static constexpr codec::nested<misb1002::range_image_ls> format{};
+};
+
+struct geo_registration_local_set {
+	static constexpr uint32_t tag = 98;
+	static constexpr std::string_view name = "Geo-Registration Local Set";
+	static constexpr codec::nested<misb1601::geo_registration_ls> format{};
+};
+
+struct composite_imaging_local_set {
+	static constexpr uint32_t tag = 99;
+	static constexpr std::string_view name = "Composite Imaging Local Set";
+	static constexpr codec::nested<misb1602::composite_imaging_ls> format{};
 };
 
 }  // namespace klv::misb0601

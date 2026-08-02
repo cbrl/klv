@@ -2,7 +2,15 @@
 
 klv is a header-only C++23 library that decodes and encodes KLV (SMPTE 336)
 metadata. It includes definitions for MISB ST 0601 (UAS Datalink Local Set) and
-MISB ST 0102 (Security Metadata Local Set).
+the local sets that nest in it:
+- ST 0102 (Security)
+- ST 0806 (Remote Video Terminal)
+- ST 0903 (VMTI)
+- ST 1002 (Range Image)
+- ST 1206 (SAR Motion Imagery)
+- ST 1601 (Geo-Registration)
+- ST 1602 (Composite Imaging)
+- ST 1607 (Segment and Amend)
 
 ## Decoding
 
@@ -31,6 +39,10 @@ void handle(klv::byte_span bytes) {
 checksum, and continues at the next universal label after a malformed packet. A
 field that is absent, holds the error value of its format, or has a bad length
 has an empty value with the reason (`field_error`).
+
+A set can hold some fields more than once, for example the ST 0601 Segment
+Local Set. Such a field has a list value with one item for each occurrence, and
+`record::add` appends an item.
 
 ## Encoding
 
@@ -68,14 +80,28 @@ struct my_set {
 };
 ```
 
-The built-in codecs are `integer`, `mapped`, `imapb` (MISB ST 1201), `string`,
-`timestamp`, `ieee754`, `enumeration`, `bytes`, `nested` (a local set inside a
-field), `series` (length-prefixed elements), and `ber_oid_list`. A new value
-format is one new codec type. Each codec has its own header in
-[`include/klv/codecs/`](include/klv/codecs).
+The built-in base codecs are:
+- `integer`
+- `ber_oid`
+- `mapped`
+- `imapb` (MISB ST 1201)
+- `string`
+- `timestamp`
+- `ieee754`
+- `ieee754_variable`
+- `enumeration`
+- `bytes`
+- `uuid`
+- `nested` (a local set inside a field)
+- `repeated` (a field that a set can hold more than once)
+- `series` (length-prefixed elements)
+- `ber_oid_list`
+- `mdarray` (MISB ST 1303)
+- `sdcc_flp` (MISB ST 1010)
 
-The MISB definitions are in [`include/klv/misb0102/`](include/klv/misb0102)
-and [`include/klv/misb0601/`](include/klv/misb0601).
+A new value format is one new codec type. Each codec has its own header in
+[`include/klv/codecs/`](include/klv/codecs). The MISB definitions are in
+dedicated folders, such as [`include/klv/misb0601/`](include/klv/misb0601).
 
 # Building and installing
 

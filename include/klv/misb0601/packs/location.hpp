@@ -12,6 +12,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <tuple>
 
 namespace klv::misb0601 {
 
@@ -21,7 +22,10 @@ struct location {
 	double longitude = 0.0;  ///< deg
 	std::optional<double> height;  ///< m above the WGS84 ellipsoid
 
-	friend auto operator==(location const&, location const&) -> bool = default;
+	// Exact comparison. std::tie compares in the standard library, which keeps -Wfloat-equal quiet.
+	friend auto operator==(location const& lhs, location const& rhs) -> bool {
+		return std::tie(lhs.latitude, lhs.longitude, lhs.height) == std::tie(rhs.latitude, rhs.longitude, rhs.height);
+	}
 };
 
 /// Location pack: latitude and longitude (IMAPB, 4 bytes each), then an optional height (IMAPB, 3 bytes)

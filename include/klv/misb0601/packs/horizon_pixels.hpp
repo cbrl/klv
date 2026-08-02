@@ -14,6 +14,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <tuple>
 
 namespace klv::misb0601 {
 
@@ -24,7 +25,11 @@ struct horizon_locations {
 	double latitude1 = 0.0;  ///< deg
 	double longitude1 = 0.0;  ///< deg
 
-	friend auto operator==(horizon_locations const&, horizon_locations const&) -> bool = default;
+	// Exact comparison. std::tie compares in the standard library, which keeps -Wfloat-equal quiet.
+	friend auto operator==(horizon_locations const& lhs, horizon_locations const& rhs) -> bool {
+		return std::tie(lhs.latitude0, lhs.longitude0, lhs.latitude1, lhs.longitude1)
+		    == std::tie(rhs.latitude0, rhs.longitude0, rhs.latitude1, rhs.longitude1);
+	}
 };
 
 /// Image coordinates of the two points where the horizon meets the image frame

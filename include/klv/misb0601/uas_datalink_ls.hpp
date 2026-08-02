@@ -1,13 +1,15 @@
 /**
  * @file klv/misb0601/uas_datalink_ls.hpp
- * @brief MISB ST 0601 UAS Datalink Local Set definition
+ * @brief MISB ST 0601 UAS Datalink Local Set definition, and the items that refer to other items of the set
  *
- * `uas_datalink_ls` lists the fields in encode order: Precision Time Stamp first, Checksum last.
+ * `uas_datalink_ls` lists the fields in encode order: Precision Time Stamp first, Checksum last. The Segment and Amend
+ * Local Sets (MISB ST 1607) hold items of the set. Thus, this header defines them after the set.
  */
 
 #pragma once
 
 #include "klv/bytes.hpp"
+#include "klv/codec.hpp"
 #include "klv/misb0601/alternate_platform.hpp"
 #include "klv/misb0601/environment.hpp"
 #include "klv/misb0601/image.hpp"
@@ -17,9 +19,20 @@
 #include "klv/misb0601/target.hpp"
 #include "klv/set.hpp"
 
+#include <cstdint>
 #include <string_view>
 
 namespace klv::misb0601 {
+
+struct segment_local_set;
+struct amend_local_set;
+
+/// Standard deviations and correlations of the items before it (MISB ST 1010). The set can hold it more than once.
+struct sdcc_flp {
+	static constexpr uint32_t tag = 102;
+	static constexpr std::string_view name = "SDCC-FLP";
+	static constexpr codec::repeated<codec::sdcc_flp> format{};
+};
 
 /// MISB ST 0601 UAS Datalink Local Set
 struct uas_datalink_ls {
@@ -99,6 +112,8 @@ struct uas_datalink_ls {
 	    alternate_platform_name,
 	    alternate_platform_heading,
 	    event_start_time_utc,
+	    rvt_local_set,
+	    vmti_local_set,
 	    sensor_ellipsoid_height,
 	    alternate_platform_ellipsoid_height,
 	    operational_mode,
@@ -119,7 +134,14 @@ struct uas_datalink_ls {
 	    platform_angle_of_attack_full,
 	    platform_sideslip_angle_full,
 	    miis_core_identifier,
+	    sar_motion_imagery_local_set,
 	    target_width_extended,
+	    range_image_local_set,
+	    geo_registration_local_set,
+	    composite_imaging_local_set,
+	    segment_local_set,
+	    amend_local_set,
+	    sdcc_flp,
 	    density_altitude_extended,
 	    sensor_ellipsoid_height_extended,
 	    alternate_platform_ellipsoid_height_extended,
@@ -161,6 +183,32 @@ struct uas_datalink_ls {
 	    waypoint_list,
 	    view_domain,
 	    checksum>;
+};
+
+/**
+ * @brief Child set of the UAS Datalink LS (MISB ST 1607)
+ *
+ * The child set has the fields of the set, without the checksum and without the child sets. A Segment or Amend
+ * Local Set inside a child set decodes as an unknown field. `misb1607::merge` applies a child set to its parent.
+ */
+struct uas_datalink_child_ls {
+	static constexpr std::string_view name = "UAS Datalink Child Local Set";
+
+	using fields = fields_without<uas_datalink_ls::fields, checksum, segment_local_set, amend_local_set>;
+};
+
+/// Items of one segment. The set can hold the field more than once: one Segment LS for each segment.
+struct segment_local_set {
+	static constexpr uint32_t tag = 100;
+	static constexpr std::string_view name = "Segment Local Set";
+	static constexpr codec::repeated<codec::nested<uas_datalink_child_ls>> format{};
+};
+
+/// Corrections of items of the set. The set can hold the field more than once.
+struct amend_local_set {
+	static constexpr uint32_t tag = 101;
+	static constexpr std::string_view name = "Amend Local Set";
+	static constexpr codec::repeated<codec::nested<uas_datalink_child_ls>> format{};
 };
 
 }  // namespace klv::misb0601

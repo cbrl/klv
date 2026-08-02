@@ -7,6 +7,7 @@
 
 #include "klv/codec.hpp"
 #include "klv/misb0601/packs/weapons_store.hpp"
+#include "klv/misb0903/vmti_ls.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -78,6 +79,12 @@ struct laser_prf_code {
 	static constexpr uint32_t tag = 62;
 	static constexpr std::string_view name = "Laser PRF Code";
 	static constexpr codec::integer<uint16_t> format{};
+};
+
+struct vmti_local_set {
+	static constexpr uint32_t tag = 74;
+	static constexpr std::string_view name = "VMTI Local Set";
+	static constexpr codec::nested<misb0903::vmti_ls> format{};
 };
 
 struct target_id {

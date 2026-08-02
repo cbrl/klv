@@ -14,6 +14,7 @@
 #include <expected>
 #include <format>
 #include <string>
+#include <tuple>
 
 namespace klv::misb0601 {
 
@@ -24,7 +25,11 @@ struct wavelength_record {
 	double maximum = 0.0;  ///< nm
 	std::string name;
 
-	friend auto operator==(wavelength_record const&, wavelength_record const&) -> bool = default;
+	// Exact comparison. std::tie compares in the standard library, which keeps -Wfloat-equal quiet.
+	friend auto operator==(wavelength_record const& lhs, wavelength_record const& rhs) -> bool {
+		return std::tie(lhs.id, lhs.minimum, lhs.maximum, lhs.name)
+		    == std::tie(rhs.id, rhs.minimum, rhs.maximum, rhs.name);
+	}
 };
 
 /// Wavelength record: BER-OID ID, minimum and maximum (IMAPB, 4 bytes each), then the name in the remaining bytes

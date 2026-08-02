@@ -15,6 +15,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <tuple>
 
 namespace klv::misb0601 {
 
@@ -23,7 +24,10 @@ struct view_interval {
 	double start = 0.0;  ///< deg
 	double range = 0.0;  ///< deg
 
-	friend auto operator==(view_interval const&, view_interval const&) -> bool = default;
+	// Exact comparison. std::tie compares in the standard library, which keeps -Wfloat-equal quiet.
+	friend auto operator==(view_interval const& lhs, view_interval const& rhs) -> bool {
+		return std::tie(lhs.start, lhs.range) == std::tie(rhs.start, rhs.range);
+	}
 };
 
 /// Possible sensor azimuth, elevation, and roll angles. An axis without a limit has no value.

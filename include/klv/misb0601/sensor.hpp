@@ -1,6 +1,6 @@
 /**
  * @file klv/misb0601/sensor.hpp
- * @brief MISB ST 0601 fields: sensor position, pointing, field of view, and payloads
+ * @brief MISB ST 0601 fields: sensor position, pointing, field of view, payloads, and synthetic aperture radar
  */
 
 #pragma once
@@ -11,6 +11,7 @@
 #include "klv/misb0601/packs/payloads.hpp"
 #include "klv/misb0601/packs/view_ranges.hpp"
 #include "klv/misb0601/packs/wavelength_record.hpp"
+#include "klv/misb1206.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -116,6 +117,12 @@ struct sensor_east_velocity {
 	static constexpr std::string_view name = "Sensor East Velocity";
 	static constexpr std::string_view units = "m/s";
 	static constexpr codec::mapped<int16_t> format{-327.0, 327.0, codec::sentinel::reserve_min};
+};
+
+struct sar_motion_imagery_local_set {
+	static constexpr uint32_t tag = 95;
+	static constexpr std::string_view name = "SAR Motion Imagery Local Set";
+	static constexpr codec::nested<misb1206::sar_motion_imagery_ls> format{};
 };
 
 struct sensor_ellipsoid_height_extended {
