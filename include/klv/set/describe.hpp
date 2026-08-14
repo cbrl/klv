@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace klv {
@@ -41,34 +42,35 @@ auto describe_into(
 		return prefix.empty() ? std::string{name} : std::format("{}.{}", prefix, name);
 	};
 
-	for_each_field(rec, [&]<typename E>(std::type_identity<E>, field<value_t<E>> const& value) {
-		if (!value && value.error() == field_error::absent && !include_absent) {
-			return;
-		}
+	// One entry without a value, or with the display text of a value
+	auto const add_entry = [&](uint32_t tag, std::string_view name, std::string_view units, field<std::string> value) {
+		out.push_back(field_text{.tag = tag, .name = full_name(name), .units = units, .value = std::move(value)});
+	};
 
-		if constexpr (is_record<value_t<E>>::value) {
-			if (value) {
-				describe_into(*value, full_name(E::name), include_absent, out);
-				return;
+	// Each field of each set instantiates this body.
+	for_each_field(rec, [&]<typename E>(std::type_identity<E>, field<value_t<E>> const& value) {
+		constexpr auto tag = static_cast<uint32_t>(E::tag);
+		constexpr auto units = units_of<E>();
+
+		if (!value) {
+			if (value.error() != field_error::absent || include_absent) {
+				add_entry(tag, E::name, units, std::unexpected(value.error()));
 			}
+		}
+		else if constexpr (is_record<value_t<E>>::value) {
+			describe_into(*value, full_name(E::name), include_absent, out);
 		}
 		else if constexpr (is_record_list<value_t<E>>::value) {
-			if (value && !value->empty()) {
-				for (auto i = size_t{0}; i < value->size(); ++i) {
-					describe_into((*value)[i], full_name(std::format("{}[{}]", E::name, i)), include_absent, out);
-				}
-				return;
+			if (value->empty()) {
+				add_entry(tag, E::name, units, E::format.to_string(*value));
+			}
+			for (auto i = size_t{0}; i < value->size(); ++i) {
+				describe_into((*value)[i], full_name(std::format("{}[{}]", E::name, i)), include_absent, out);
 			}
 		}
-
-		out.push_back(
-		    field_text{
-		        .tag = static_cast<uint32_t>(E::tag),
-		        .name = full_name(E::name),
-		        .units = units_of<E>(),
-		        .value = value.transform([](value_t<E> const& v) { return E::format.to_string(v); }),
-		    }
-		);
+		else {
+			add_entry(tag, E::name, units, E::format.to_string(*value));
+		}
 	});
 
 	for (auto const& unknown : rec.unknown()) {

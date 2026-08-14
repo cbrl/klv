@@ -2,7 +2,7 @@
  * @file klv/misb0806/rvt_ls.hpp
  * @brief MISB ST 0806 Remote Video Terminal Local Set definition
  *
- * `rvt_ls` lists the fields in encode order.
+ * `rvt_ls` lists the fields in encode order. Checksum is last.
  */
 
 #pragma once
@@ -18,12 +18,15 @@ namespace klv::misb0806 {
 /**
  * @brief MISB ST 0806 Remote Video Terminal Local Set
  *
- * The set usually arrives nested in MISB ST 0601 tag 73. A stand-alone packet ends with a CRC-32 checksum (tag 1).
- * This library treats it as a plain field. Packet decoding does not verify it, and packet encoding does not compute it.
+ * The set usually arrives nested in MISB ST 0601 tag 73. A stand-alone packet ends with a CRC-32/MPEG-2 checksum
+ * (tag 1). Packet decoding verifies it, and packet encoding computes it. A nested set has no checksum.
  */
 struct rvt_ls {
 	static constexpr std::string_view name = "RVT Local Set";
 	static constexpr universal_key key = ul("06 0E 2B 34 02 0B 01 01 0E 01 03 01 02 00 00 00");
+
+	using checksum_field = checksum;
+	static constexpr auto checksum_function = crc32_mpeg2;
 
 	using fields = field_list<
 	    precision_time_stamp,

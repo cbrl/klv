@@ -19,12 +19,14 @@ namespace klv::misb1002 {
  * @brief MISB ST 1002 Range Image Local Set
  *
  * The set usually arrives nested in MISB ST 0601 tag 97. A stand-alone packet ends with a CRC-16-CCITT checksum (tag
- * 21). This library treats it as a plain field. Packet decoding does not verify it, and packet encoding does not
- * compute it.
+ * 21). Packet decoding verifies it, and packet encoding computes it. A nested set has no checksum.
  */
 struct range_image_ls {
 	static constexpr std::string_view name = "Range Image Local Set";
 	static constexpr universal_key key = ul("06 0E 2B 34 02 0B 01 01 0E 01 03 03 0C 00 00 00");
+
+	using checksum_field = checksum;
+	static constexpr auto checksum_function = crc16_ccitt;
 
 	using fields = field_list<
 	    precision_time_stamp,

@@ -63,6 +63,11 @@ auto encode_occurrence(byte_writer& out, F&& write_value) -> result<void> {
 template<field_descriptor E>
 [[nodiscard]]
 auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<void> {
+	// An empty field has a length of zero
+	if (!value && value.error() == field_error::empty) {
+		return encode_occurrence<E>(out, []() -> encode_result { return {}; });
+	}
+
 	// An absent field, or a field that did not decode, has nothing to write
 	if (!value && value.error() != field_error::error_indicator) {
 		return {};
@@ -102,13 +107,14 @@ template<local_set_definition S>
 [[nodiscard]]
 auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
 	auto status = result<void>{};
+	auto const& slots = record_access::slots(rec);
 
 	auto const encode_one = [&]<typename E>(std::type_identity<E>) -> bool {
 		if constexpr (is_checksum_field<S, E>()) {
 			return true;
 		}
 		else {
-			status = encode_field<E>(rec.template get<E>(), out);
+			status = encode_field<E>(static_cast<field_slot<E> const&>(slots).value, out);
 			return status.has_value();
 		}
 	};
@@ -135,7 +141,8 @@ auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
  * @brief Append the value bytes of a local set to `out`
  *
  * The function writes the fields in definition order, then the unknown fields. It skips absent fields and fields that
- * did not decode. It does not write a checksum field (see `encode_packet`). On failure, `out` keeps its old size.
+ * did not decode. An empty field gets a length of zero. The function does not write a checksum field (see
+ * `encode_packet`). On failure, `out` keeps its old size.
  */
 template<local_set_definition S>
 [[nodiscard]]

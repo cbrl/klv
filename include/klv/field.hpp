@@ -18,6 +18,7 @@ enum class field_error : uint8_t {
 	bad_length,  ///< The value length does not match the field format
 	out_of_range,  ///< The value is outside the range of the field format
 	invalid_value,  ///< The value is not valid for the field format
+	empty,  ///< The set holds the field with a length of zero (a null value)
 };
 
 [[nodiscard]]
@@ -33,6 +34,8 @@ constexpr auto to_string(field_error error) noexcept -> std::string_view {
 			return "out of range";
 		case field_error::invalid_value:
 			return "invalid value";
+		case field_error::empty:
+			return "empty";
 	}
 	return "unknown";
 }

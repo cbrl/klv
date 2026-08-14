@@ -30,10 +30,15 @@
 
 namespace klv {
 
-/// A codec converts one field value between wire bytes and a C++ value
+/**
+ * @brief A codec converts one field value between wire bytes and a C++ value
+ *
+ * The concept reads the decode result type with `decltype`, which does not need a complete type. This allows a set
+ * to hold a list of its own records (MISB ST 1607).
+ */
 template<typename C>
 concept codec_type = requires(C const& codec, byte_span in, typename C::value_type const& value, byte_writer& out) {
-	{ codec.decode(in) } -> std::same_as<field<typename C::value_type>>;
+	requires std::same_as<decltype(codec.decode(in)), field<typename C::value_type>>;
 	{ codec.encode(value, out) } -> std::same_as<encode_result>;
 	{ codec.to_string(value) } -> std::same_as<std::string>;
 };

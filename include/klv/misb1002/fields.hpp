@@ -88,7 +88,7 @@ struct section_data_pack {
 	static constexpr codec::repeated<section_data_codec> format{};
 };
 
-/// CRC-16-CCITT of a stand-alone packet. Packet decoding and encoding treat it as a plain field.
+/// CRC-16-CCITT of a stand-alone packet (see `range_image_ls`)
 struct checksum {
 	static constexpr uint32_t tag = 21;
 	static constexpr std::string_view name = "Checksum";

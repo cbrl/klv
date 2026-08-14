@@ -27,8 +27,11 @@ namespace klv::codec {
  * @code
  * static constexpr codec::repeated<codec::nested<poi_ls>> format{};
  * @endcode
+ *
+ * `Item` has no constraint here. A set can hold a list of its own records (MISB ST 1607). The `codec_type` check of
+ * such an item needs the complete record type. Thus, the set definition does the check when it uses the field.
  */
-template<codec_type Item>
+template<typename Item>
 struct repeated {
 	using item_type = typename Item::value_type;
 	using value_type = std::vector<item_type>;

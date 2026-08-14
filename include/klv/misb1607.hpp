@@ -2,10 +2,11 @@
  * @file misb1607.hpp
  * @brief MISB ST 1607 - Child sets: the Amend Local Set and the Segment Local Set
  *
- * A child set holds items of its parent set, for example MISB ST 0601 tags 100 and 101 (see
- * `misb0601::uas_datalink_child_ls`):
- * - An Amend LS corrects or adds items of the parent.
+ * A child set holds items of its parent set. In MISB ST 0601, tags 100 and 101 hold child sets as records of the
+ * parent set (`misb0601::segment_local_set` and `misb0601::amend_local_set`):
+ * - An Amend LS corrects, adds, or clears items of the parent.
  * - Each Segment LS holds the items of one segment. The parent items outside the Segment LS apply to all segments.
+ * - A child set can hold other child sets.
  *
  * `apply` and `merge` combine a child set with its parent.
  */
@@ -24,8 +25,8 @@ namespace klv::misb1607 {
 /**
  * @brief Copy each field of `child` that is not absent into `parent`
  *
- * A child value replaces the parent value. The function ignores a child field that the parent set does not define,
- * and the unknown fields of the child.
+ * A child value replaces the parent value. An empty child field (length of zero) makes the parent field empty. The
+ * function ignores a child field that the parent set does not define, and the unknown fields of the child.
  */
 template<local_set_definition Parent, local_set_definition Child>
 auto apply(record<Parent>& parent, record<Child> const& child) -> void {

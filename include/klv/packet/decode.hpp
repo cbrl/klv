@@ -57,10 +57,11 @@ template<universal_set_definition S>
 [[nodiscard]]
 auto verify_checksum(raw_packet const& packet, last_field_info const& last) -> result<void> {
 	using checksum_field = typename S::checksum_field;
+	using value_type = checksum_t<S>;
 	static_assert(member_of<checksum_field, S>, "The checksum field must be a field of the set");
 	static_assert(
-	    std::same_as<codec_of<checksum_field>, codec::integer<uint16_t>>,
-	    "The checksum field must use codec::integer<uint16_t>"
+	    std::same_as<codec_of<checksum_field>, codec::integer<value_type>>,
+	    "The checksum field must use codec::integer of the checksum function result type"
 	);
 
 	if (!last.present || last.tag != checksum_field::tag) {
@@ -70,7 +71,7 @@ auto verify_checksum(raw_packet const& packet, last_field_info const& last) -> r
 		    std::format("{} at offset {} does not end with a checksum field", S::name, packet.offset)
 		);
 	}
-	if (last.value.size() != sizeof(uint16_t)) {
+	if (last.value.size() != sizeof(value_type)) {
 		return make_error(
 		    error_code::checksum_mismatch,
 		    packet.offset,
@@ -80,19 +81,21 @@ auto verify_checksum(raw_packet const& packet, last_field_info const& last) -> r
 
 	// The checksum covers the packet from the first key byte through the length byte of the checksum field
 	auto const covered = static_cast<size_t>(last.value.data() - packet.bytes.data());
-	auto const computed = packet_checksum(packet.bytes.first(covered));
-	auto const stored = read_big_endian<uint16_t>(last.value);
+	auto const computed = compute_checksum<S>(packet.bytes.first(covered));
+	auto const stored = read_big_endian<value_type>(last.value);
 
 	if (computed != stored) {
 		return make_error(
 		    error_code::checksum_mismatch,
 		    packet.offset,
 		    std::format(
-		        "{} at offset {}: checksum is 0x{:04X}, computed 0x{:04X}",
+		        "{} at offset {}: checksum is 0x{:0{}X}, computed 0x{:0{}X}",
 		        S::name,
 		        packet.offset,
 		        stored,
-		        computed
+		        2 * sizeof(value_type),
+		        computed,
+		        2 * sizeof(value_type)
 		    )
 		);
 	}

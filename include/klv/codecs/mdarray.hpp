@@ -33,9 +33,9 @@ namespace klv {
 
 /// MISB ST 1303 array processing algorithm (APA): how an MDARRAY encodes its elements
 enum class array_algorithm : uint8_t {
-	natural = 1,  ///< Each element in its natural form of E bytes: IEEE 754, or an unsigned integer
+	natural = 1,  ///< Each element in its natural form of E bytes: IEEE 754, an integer, or a Boolean value
 	imapb = 2,  ///< Each element as an IMAPB value of E bytes. The pack holds the IMAPB range.
-	boolean = 3,  ///< One bit for each element. The codecs do not support it.
+	boolean = 3,  ///< One bit for each element, most significant bit first
 	unsigned_integer = 4,  ///< Each element as a BER-OID offset from a bias value
 	run_length = 5,  ///< Rectangles of equal elements on a background of one element value
 };
@@ -63,7 +63,7 @@ template<typename T>
 struct mdarray {
 	std::vector<uint32_t> sizes;  ///< Size of each dimension, outermost first
 	std::vector<T> elements;  ///< Elements in row-major order: the last dimension changes fastest
-	size_t element_size = sizeof(T);  ///< E: bytes for each element
+	size_t element_size = sizeof(T);  ///< E: bytes for each element. The Boolean algorithm does not use it.
 	array_algorithm algorithm = array_algorithm::natural;
 	double imapb_min = 0.0;  ///< `array_algorithm::imapb`: lower limit of the range
 	double imapb_max = 0.0;  ///< `array_algorithm::imapb`: upper limit of the range
@@ -90,19 +90,25 @@ struct mdarray {
 
 namespace klv::codec {
 
+/// Element types of `codec::mdarray`
+template<typename T>
+concept mdarray_element =
+    std::same_as<T, double> || std::same_as<T, uint64_t> || std::same_as<T, int64_t> || std::same_as<T, bool>;
+
 /**
- * @brief MISB ST 1303 MDARRAY of real values (`double`) or unsigned integers (`uint64_t`)
+ * @brief MISB ST 1303 MDARRAY of real values, unsigned or signed integers, or Boolean values
  *
  * The supported array processing algorithms are:
  * - `double`: `natural` (IEEE 754, E = 4 or 8), `imapb` (E = 1 to 8), and `run_length` (natural elements)
  * - `uint64_t`: `natural` (E = 1 to 8), `unsigned_integer`, and `run_length` (natural elements)
+ * - `int64_t`: `natural` (two's complement, E = 1 to 8) and `run_length` (natural elements)
+ * - `bool`: `boolean`, `natural` (E = 1 to 8, not zero is true), and `run_length` (natural elements)
  *
  * Decoding fails with `field_error::invalid_value` for another algorithm, a malformed pack, or an array with more than
  * `max_elements` elements. An IMAPB special value (for example "below minimum") decodes as NaN. Encoding writes NaN
  * as the IMAPB NaN value. A run-length encoding uses the most common element as the background.
  */
-template<typename T>
-requires std::same_as<T, double> || std::same_as<T, uint64_t>
+template<mdarray_element T>
 struct mdarray {
 	using value_type = klv::mdarray<T>;
 
@@ -145,6 +151,9 @@ struct mdarray {
 			case array_algorithm::imapb:
 				status = decode_imapb(reader, count, result);
 				break;
+			case array_algorithm::boolean:
+				status = decode_boolean(reader, count, result);
+				break;
 			case array_algorithm::unsigned_integer:
 				status = decode_unsigned(reader, count, result);
 				break;
@@ -184,6 +193,8 @@ struct mdarray {
 				return encode_natural(value, out);
 			case array_algorithm::imapb:
 				return encode_imapb(value, out);
+			case array_algorithm::boolean:
+				return encode_boolean(value, out);
 			case array_algorithm::unsigned_integer:
 				return encode_unsigned(value, out);
 			case array_algorithm::run_length:
@@ -229,8 +240,12 @@ private:
 		if constexpr (std::same_as<T, double>) {
 			return detail::read_ieee(bytes).value_or(std::numeric_limits<double>::quiet_NaN());
 		}
+		else if constexpr (std::same_as<T, bool>) {
+			return std::ranges::any_of(bytes, [](std::byte byte) { return byte != std::byte{0}; });
+		}
 		else {
-			return read_big_endian<uint64_t>(bytes);
+			// A signed type is sign-extended from the first byte (two's complement)
+			return read_big_endian<T>(bytes);
 		}
 	}
 
@@ -239,8 +254,19 @@ private:
 		if constexpr (std::same_as<T, double>) {
 			return detail::put_ieee(element, size, out);
 		}
+		else if constexpr (std::same_as<T, bool>) {
+			out.put_big_endian(static_cast<uint8_t>(element ? 1U : 0U), size);
+			return {};
+		}
 		else {
-			if (size < sizeof(uint64_t) && (element >> (size * 8)) != 0) {
+			if constexpr (std::same_as<T, int64_t>) {
+				// E bytes hold -2^(8E-1) to 2^(8E-1) - 1
+				auto const limit = size < sizeof(int64_t) ? int64_t{1} << (size * 8 - 1) : int64_t{0};
+				if (limit != 0 && (element < -limit || element >= limit)) {
+					return std::unexpected(field_error::out_of_range);
+				}
+			}
+			else if (size < sizeof(uint64_t) && (element >> (size * 8)) != 0) {
 				return std::unexpected(field_error::out_of_range);
 			}
 			out.put_big_endian(element, size);
@@ -293,6 +319,25 @@ private:
 			for (auto i = size_t{0}; i < count; ++i) {
 				auto const element = format->decode(*reader.take(size));
 				result.elements.push_back(element.value_or(std::numeric_limits<double>::quiet_NaN()));
+			}
+			return {};
+		}
+		else {
+			return std::unexpected(field_error::invalid_value);
+		}
+	}
+
+	/// One bit for each element, most significant bit first. The bits after the last element are not used.
+	static auto decode_boolean(byte_reader& reader, size_t count, value_type& result) -> field<void> {
+		if constexpr (std::same_as<T, bool>) {
+			auto const bytes = reader.take((count + 7) / 8);
+			if (!bytes) {
+				return std::unexpected(field_error::invalid_value);
+			}
+			result.elements.reserve(count);
+			for (auto i = size_t{0}; i < count; ++i) {
+				auto const byte = std::to_integer<unsigned>((*bytes)[i / 8]);
+				result.elements.push_back(((byte >> (7 - i % 8)) & 1U) != 0);
 			}
 			return {};
 		}
@@ -416,6 +461,26 @@ private:
 		}
 	}
 
+	/// Write one bit for each element, most significant bit first. Zero bits fill the last byte.
+	static auto encode_boolean(value_type const& value, byte_writer& out) -> encode_result {
+		if constexpr (std::same_as<T, bool>) {
+			auto byte = uint8_t{0};
+			for (auto i = size_t{0}; i < value.elements.size(); ++i) {
+				if (value.elements[i]) {
+					byte = static_cast<uint8_t>(byte | (0x80U >> (i % 8)));
+				}
+				if (i % 8 == 7 || i + 1 == value.elements.size()) {
+					out.put_u8(byte);
+					byte = 0;
+				}
+			}
+			return {};
+		}
+		else {
+			return std::unexpected(field_error::invalid_value);
+		}
+	}
+
 	static auto encode_unsigned(value_type const& value, byte_writer& out) -> encode_result {
 		if constexpr (std::same_as<T, uint64_t>) {
 			auto const bias = std::ranges::min(value.elements);
@@ -487,20 +552,40 @@ private:
 		return strides;
 	}
 
-	/// Equal bit patterns. Two NaN values with the same bits are equal.
+	/// Bit pattern of an element. Two NaN values with the same bits are equal.
+	[[nodiscard]]
+	static auto bits_of(T element) noexcept -> uint64_t {
+		if constexpr (std::same_as<T, bool>) {
+			return element ? 1U : 0U;
+		}
+		else {
+			return std::bit_cast<uint64_t>(element);
+		}
+	}
+
+	[[nodiscard]]
+	static auto from_bits(uint64_t bits) noexcept -> T {
+		if constexpr (std::same_as<T, bool>) {
+			return bits != 0;
+		}
+		else {
+			return std::bit_cast<T>(bits);
+		}
+	}
+
 	[[nodiscard]]
 	static auto same_bits(T lhs, T rhs) noexcept -> bool {
-		return std::bit_cast<uint64_t>(lhs) == std::bit_cast<uint64_t>(rhs);
+		return bits_of(lhs) == bits_of(rhs);
 	}
 
 	[[nodiscard]]
 	static auto most_common(std::vector<T> const& elements) -> T {
 		auto counts = std::map<uint64_t, size_t>{};
 		for (auto const element : elements) {
-			++counts[std::bit_cast<uint64_t>(element)];
+			++counts[bits_of(element)];
 		}
 		auto const best = std::ranges::max_element(counts, {}, [](auto const& entry) { return entry.second; });
-		return std::bit_cast<T>(best->first);
+		return from_bits(best->first);
 	}
 };
 

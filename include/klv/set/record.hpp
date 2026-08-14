@@ -47,13 +47,29 @@ struct field_slots<field_list<F...>> : field_slot<F>... {
 	friend auto operator==(field_slots const&, field_slots const&) -> bool = default;
 };
 
+/**
+ * @brief Slot access for the set algorithms, without the member check of `record::get`
+ *
+ * The algorithms visit only the fields of the set. They cast the slots to `field_slot<E>`. A debug build keeps each
+ * small template function as a function, and a cast adds no function for each field.
+ */
+struct record_access {
+	template<typename R>
+	[[nodiscard]]
+	static auto slots(R& rec) noexcept -> auto& {
+		return rec.slots_;
+	}
+};
+
 }  // namespace detail
 
 /**
  * @brief Decoded (or to be encoded) contents of one local set
  *
- * Each field of `S` has a slot of type `field<value_t<E>>`. An empty slot holds the reason: `absent` when the set did
- * not contain the field, or a decode error such as `error_indicator` or `bad_length`.
+ * Each field of `S` has a slot of type `field<value_t<E>>`. A slot without a value holds the reason:
+ * - `absent`: the set did not contain the field.
+ * - `empty`: the field had a length of zero.
+ * - a decode error, such as `error_indicator` or `bad_length`.
  */
 template<local_set_definition S>
 class record {
@@ -106,6 +122,13 @@ public:
 		slot<E>().value = std::unexpected(field_error::error_indicator);
 	}
 
+	/// Mark field `E` as empty. Encoding writes it with a length of zero. In a MISB ST 1607 child set, an empty field
+	/// clears the parent value.
+	template<member_of<S> E>
+	auto set_empty() -> void {
+		slot<E>().value = std::unexpected(field_error::empty);
+	}
+
 	/// Remove field `E`
 	template<member_of<S> E>
 	auto erase() -> void {
@@ -129,6 +152,8 @@ public:
 	friend auto operator==(record const&, record const&) -> bool = default;
 
 private:
+	friend struct detail::record_access;
+
 	template<typename E>
 	[[nodiscard]]
 	auto slot() noexcept -> detail::field_slot<E>& {
@@ -145,7 +170,8 @@ private:
 template<local_set_definition S, typename F>
 auto for_each_field(record<S> const& rec, F&& visitor) -> void {
 	[&]<typename... E>(field_list<E...>) {
-		(visitor(std::type_identity<E>{}, rec.template get<E>()), ...);
+		auto const& slots = detail::record_access::slots(rec);
+		(visitor(std::type_identity<E>{}, static_cast<detail::field_slot<E> const&>(slots).value), ...);
 	}(typename S::fields{});
 }
 

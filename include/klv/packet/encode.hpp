@@ -13,6 +13,7 @@
 #include "klv/set/encode.hpp"
 #include "klv/set/record.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -22,8 +23,8 @@ namespace klv {
  * @brief Append one packet of set `S` to `out`
  *
  * The packet has the key of `S`, a BER length, and the fields in definition order. When `S` names a checksum field,
- * the function ignores any value in that field and writes a computed checksum as the last field. On failure, `out`
- * keeps its old size.
+ * the function ignores any value in that field. It writes a computed checksum as the last field (see
+ * `checksum_function`). On failure, `out` keeps its old size.
  */
 template<universal_set_definition S>
 [[nodiscard]]
@@ -40,8 +41,8 @@ auto encode_packet(record<S> const& rec, byte_vector& out) -> result<void> {
 		if constexpr (has_checksum<S>) {
 			// Placeholder value. The checksum covers the final BER length, so it is computed after the value is done.
 			writer.put_ber_oid(S::checksum_field::tag);
-			writer.put_u8(static_cast<uint8_t>(sizeof(uint16_t)));
-			writer.put_big_endian(uint16_t{0});
+			writer.put_u8(static_cast<uint8_t>(sizeof(detail::checksum_t<S>)));
+			writer.put_big_endian(detail::checksum_t<S>{0});
 		}
 		return {};
 	});
@@ -52,10 +53,13 @@ auto encode_packet(record<S> const& rec, byte_vector& out) -> result<void> {
 	}
 
 	if constexpr (has_checksum<S>) {
+		constexpr auto size = sizeof(detail::checksum_t<S>);
 		auto const bytes = byte_span{out}.subspan(start);
-		auto const checksum = packet_checksum(bytes.first(bytes.size() - sizeof(uint16_t)));
-		out[out.size() - 2] = static_cast<std::byte>(checksum >> 8U);
-		out[out.size() - 1] = static_cast<std::byte>(checksum & 0xFFU);
+		auto checksum = detail::compute_checksum<S>(bytes.first(bytes.size() - size));
+		for (auto i = size_t{1}; i <= size; ++i) {
+			out[out.size() - i] = static_cast<std::byte>(checksum & 0xFFU);
+			checksum = static_cast<detail::checksum_t<S>>(checksum >> 8U);
+		}
 	}
 
 	return {};

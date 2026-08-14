@@ -3,7 +3,7 @@
  * @brief MISB ST 0601 UAS Datalink Local Set definition, and the items that refer to other items of the set
  *
  * `uas_datalink_ls` lists the fields in encode order: Precision Time Stamp first, Checksum last. The Segment and Amend
- * Local Sets (MISB ST 1607) hold items of the set. Thus, this header defines them after the set.
+ * Local Sets (MISB ST 1607) hold records of the set. Thus, this header defines them after the set.
  */
 
 #pragma once
@@ -186,29 +186,22 @@ struct uas_datalink_ls {
 };
 
 /**
- * @brief Child set of the UAS Datalink LS (MISB ST 1607)
+ * @brief Items of one segment (MISB ST 1607)
  *
- * The child set has the fields of the set, without the checksum and without the child sets. A Segment or Amend
- * Local Set inside a child set decodes as an unknown field. `misb1607::merge` applies a child set to its parent.
+ * The set can hold the field more than once: one Segment LS for each segment. A child set is a record of the UAS
+ * Datalink LS without a checksum. It can hold other child sets. `misb1607::merge` applies a child set to its parent.
  */
-struct uas_datalink_child_ls {
-	static constexpr std::string_view name = "UAS Datalink Child Local Set";
-
-	using fields = fields_without<uas_datalink_ls::fields, checksum, segment_local_set, amend_local_set>;
-};
-
-/// Items of one segment. The set can hold the field more than once: one Segment LS for each segment.
 struct segment_local_set {
 	static constexpr uint32_t tag = 100;
 	static constexpr std::string_view name = "Segment Local Set";
-	static constexpr codec::repeated<codec::nested<uas_datalink_child_ls>> format{};
+	static constexpr codec::repeated<codec::nested<uas_datalink_ls>> format{};
 };
 
-/// Corrections of items of the set. The set can hold the field more than once.
+/// Corrections of items of the set (MISB ST 1607). The set can hold the field more than once.
 struct amend_local_set {
 	static constexpr uint32_t tag = 101;
 	static constexpr std::string_view name = "Amend Local Set";
-	static constexpr codec::repeated<codec::nested<uas_datalink_child_ls>> format{};
+	static constexpr codec::repeated<codec::nested<uas_datalink_ls>> format{};
 };
 
 }  // namespace klv::misb0601

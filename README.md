@@ -37,12 +37,18 @@ void handle(klv::byte_span bytes) {
 
 `decode_packets` splits a buffer into packets, checks the universal key and the
 checksum, and continues at the next universal label after a malformed packet. A
-field that is absent, holds the error value of its format, or has a bad length
-has an empty value with the reason (`field_error`).
+field can have no value. Its `field_error` gives the reason, for example
+`absent`, `empty` (length of zero), `error_indicator`, or `bad_length`.
 
 A set can hold some fields more than once, for example the ST 0601 Segment
 Local Set. Such a field has a list value with one item for each occurrence, and
 `record::add` appends an item.
+
+The ST 0601 Segment and Amend Local Sets (ST 1607) hold records of the ST 0601
+set, so a child set can hold other child sets. `misb1607::merge` applies a
+child set to its parent. An empty field in an Amend Local Set clears the parent
+value. A set more than `klv::max_nesting_depth` (16) levels deep does not
+decode.
 
 ## Encoding
 
@@ -56,7 +62,9 @@ auto const bytes = klv::encode_packet(uas);  // result<byte_vector>
 ```
 
 The encoder writes the fields in definition order and adds the checksum as the
-last field.
+last field. Each set uses the checksum of its standard. ST 0601 and ST 0903 use
+a 16-bit sum, ST 1002 uses CRC-16-CCITT, and ST 0806 uses CRC-32/MPEG-2. A set
+inside another set has no checksum.
 
 ## Defining fields and sets
 
@@ -79,6 +87,10 @@ struct my_set {
     using fields = klv::field_list<platform_heading_angle /* , ... */>;
 };
 ```
+
+A set with a checksum names its `checksum_field`. It can also name a
+`checksum_function`, for example `klv::crc32_mpeg2`. Without it, the set uses
+the ST 0601 16-bit sum.
 
 The built-in base codecs are:
 - `integer`

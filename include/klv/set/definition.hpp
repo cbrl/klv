@@ -21,11 +21,18 @@
  * @endcode
  *
  * A universal set definition is a local set definition with a 16-byte `key`. When it also names a `checksum_field`,
- * packet decoding verifies the MISB ST 0601 checksum and packet encoding writes it as the last field.
+ * packet decoding verifies the checksum and packet encoding writes it as the last field. The checksum covers the packet
+ * from the first key byte through the length byte of the checksum field. `checksum_function` selects the algorithm:
+ * @code
+ * using checksum_field = checksum;                         // codec::integer<uint32_t>
+ * static constexpr auto checksum_function = crc32_mpeg2;  // without it: the MISB ST 0601 16-bit sum
+ * @endcode
  */
 
 #pragma once
 
+#include "klv/bytes/checksum.hpp"
+#include "klv/bytes/types.hpp"
 #include "klv/bytes/universal_key.hpp"
 #include "klv/codecs/codec_type.hpp"
 
@@ -87,29 +94,7 @@ template<typename E, typename List>
 struct list_contains : std::false_type {};
 
 template<typename E, typename... F>
-struct list_contains<E, field_list<F...>> : std::bool_constant<(std::same_as<E, F> || ...)> {};
-
-template<typename... Lists>
-struct concat_lists {
-	using type = field_list<>;
-};
-
-template<typename... F>
-struct concat_lists<field_list<F...>> {
-	using type = field_list<F...>;
-};
-
-template<typename... F, typename... G, typename... Rest>
-struct concat_lists<field_list<F...>, field_list<G...>, Rest...> : concat_lists<field_list<F..., G...>, Rest...> {};
-
-template<typename List, typename... Excluded>
-struct without_fields;
-
-template<typename... F, typename... Excluded>
-struct without_fields<field_list<F...>, Excluded...> {
-	using type = typename concat_lists<
-	    std::conditional_t<list_contains<F, field_list<Excluded...>>::value, field_list<>, field_list<F>>...>::type;
-};
+struct list_contains<E, field_list<F...>> : std::bool_constant<(std::is_same_v<E, F> || ...)> {};
 
 /// Largest tag for which a set uses a dense tag-to-index table
 inline constexpr auto max_dense_tag = uint32_t{4'096};
@@ -150,14 +135,6 @@ struct list_info<field_list<F...>> {
 
 }  // namespace detail
 
-/**
- * @brief The field list `List` without the fields `Excluded...`, in the same order
- *
- * The fields can be incomplete types. Thus, a set can define a child set (MISB ST 1607) from its own list.
- */
-template<typename List, typename... Excluded>
-using fields_without = typename detail::without_fields<List, Excluded...>::type;
-
 /// A struct with a display `name` and a `fields` list
 template<typename S>
 concept local_set_definition = requires {
@@ -172,6 +149,27 @@ concept member_of = local_set_definition<S> && detail::list_contains<E, typename
 /// The set names a `checksum_field`. Packet encoding writes it last, and packet decoding verifies it.
 template<typename S>
 concept has_checksum = local_set_definition<S> && requires { typename S::checksum_field; };
+
+namespace detail {
+
+/// Checksum of a packet of `S`: `S::checksum_function`, or the MISB ST 0601 16-bit sum
+template<typename S>
+requires has_checksum<S>
+[[nodiscard]]
+constexpr auto compute_checksum(byte_span data) noexcept {
+	if constexpr (requires { S::checksum_function(data); }) {
+		return S::checksum_function(data);
+	}
+	else {
+		return packet_checksum(data);
+	}
+}
+
+/// Integer type of the checksum of `S`
+template<typename S>
+using checksum_t = decltype(compute_checksum<S>(byte_span{}));
+
+}  // namespace detail
 
 /// A local set definition with a 16-byte universal `key`
 template<typename S>

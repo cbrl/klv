@@ -32,24 +32,40 @@ struct decode_options {
 
 namespace detail {
 
+/// Decode one occurrence of field `E`. Each field of each set instantiates this function. Thus, it stays small.
 template<local_set_definition S, typename E>
 auto decode_into(record<S>& rec, byte_span bytes) -> void {
+	auto& value = static_cast<field_slot<E>&>(record_access::slots(rec)).value;
+
 	if constexpr (repeated_codec<codec_of<E>>) {
+		// A zero-length occurrence has no item. It makes the field empty when no other occurrence came before it.
+		if (bytes.empty()) {
+			if (!value && value.error() == field_error::absent) {
+				value = std::unexpected(field_error::empty);
+			}
+			return;
+		}
+
 		// An earlier occurrence that did not decode keeps its error
-		if (auto const& current = rec.template get<E>(); !current && current.error() != field_error::absent) {
+		if (!value && value.error() != field_error::absent && value.error() != field_error::empty) {
 			return;
 		}
 
 		auto item = E::format.item.decode(bytes);
-		if (item) {
-			rec.template add<E>(std::move(*item));
+		if (!item) {
+			value = std::unexpected(item.error());
+			return;
 		}
-		else {
-			rec.template assign<E>(std::unexpected(item.error()));
+		if (!value) {
+			value.emplace();
 		}
+		value->push_back(std::move(*item));
+	}
+	else if (bytes.empty()) {
+		value = std::unexpected(field_error::empty);
 	}
 	else {
-		rec.template assign<E>(E::format.decode(bytes));
+		value = E::format.decode(bytes);
 	}
 }
 
@@ -147,7 +163,8 @@ auto decode_fields(
  * @brief Decode the value bytes of a local set
  *
  * A malformed tag, length, or field size fails the whole set. A field value that its codec rejects (for example a
- * wrong length or the error value) only marks that field.
+ * wrong length or the error value) only marks that field. A field with a length of zero is `field_error::empty`, for
+ * each format.
  */
 template<local_set_definition S>
 [[nodiscard]]

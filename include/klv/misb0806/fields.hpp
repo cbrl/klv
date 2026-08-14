@@ -15,7 +15,7 @@
 
 namespace klv::misb0806 {
 
-/// CRC-32 (MPEG-2) of a stand-alone packet. Packet decoding and encoding treat it as a plain field.
+/// CRC-32/MPEG-2 of a stand-alone packet (see `rvt_ls`)
 struct checksum {
 	static constexpr uint32_t tag = 1;
 	static constexpr std::string_view name = "Checksum";
