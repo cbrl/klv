@@ -68,6 +68,13 @@ using codec_of = std::remove_cvref_t<decltype(E::format)>;
 template<field_descriptor E>
 using value_t = typename codec_of<E>::value_type;
 
+/// The field, or each item of the repeated field, covers the items before it in the set (see `covering_codec`)
+template<typename E>
+concept covering_field =
+    field_descriptor<E>
+    && (covering_codec<codec_of<E>>
+        || (repeated_codec<codec_of<E>> && covering_codec<std::remove_cvref_t<decltype(codec_of<E>::item)>>));
+
 /// Units of a field, or an empty view when the descriptor has no `units` member
 template<field_descriptor E>
 [[nodiscard]]
@@ -89,6 +96,12 @@ struct is_field_list : std::false_type {};
 
 template<typename... F>
 struct is_field_list<field_list<F...>> : std::true_type {};
+
+template<typename List>
+struct list_covers : std::false_type {};
+
+template<typename... F>
+struct list_covers<field_list<F...>> : std::bool_constant<(covering_field<F> || ...)> {};
 
 template<typename E, typename List>
 struct list_contains : std::false_type {};
@@ -141,6 +154,10 @@ concept local_set_definition = requires {
 	{ S::name } -> std::convertible_to<std::string_view>;
 	typename S::fields;
 } && detail::is_field_list<typename S::fields>::value;
+
+/// A field of the set `S` covers the items before it. Set decoding then keeps the tags of the decoded items.
+template<typename S>
+concept has_covering_field = local_set_definition<S> && detail::list_covers<typename S::fields>::value;
 
 /// `E` is a field of the set `S`
 template<typename E, typename S>

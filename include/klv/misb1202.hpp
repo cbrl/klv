@@ -103,7 +103,8 @@ struct denominator_y_factor {
 	static constexpr codec::ieee754<float> format{};
 };
 
-/// Uncertainty of the items before it. The set can hold it more than once.
+/// Uncertainty of items 1 to 8 before it. The set can hold it more than once. ST 1202 requires Mode 2 parse control
+/// and IEEE 754 standard deviations.
 struct sdcc_flp {
 	static constexpr uint32_t tag = 9;
 	static constexpr std::string_view name = "SDCC-FLP";

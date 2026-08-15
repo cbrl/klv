@@ -15,6 +15,8 @@
  *
  * A repeated codec (see `codec::repeated`) also has an `item` codec and an `item_type`. A set can hold its field more
  * than once.
+ *
+ * A covering codec (see `covering_codec`) also decodes with the tags of the items before the value in its set.
  */
 
 #pragma once
@@ -24,6 +26,8 @@
 #include "klv/field.hpp"
 
 #include <concepts>
+#include <cstdint>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -55,6 +59,18 @@ concept repeated_codec = codec_type<C> && requires(C const& codec) {
 	typename C::item_type;
 	requires codec_type<std::remove_cvref_t<decltype(codec.item)>>;
 	requires std::same_as<typename C::value_type, std::vector<typename C::item_type>>;
+};
+
+/**
+ * @brief A codec whose value covers the items before it in its set (for example the MISB ST 1010 SDCC-FLP)
+ *
+ * Set decoding passes the tags of the items before the value, in decode order. Set encoding writes the items that
+ * `covered_tags` names directly before the value.
+ */
+template<typename C>
+concept covering_codec = codec_type<C> && requires(C const& codec, byte_span in, typename C::value_type const& value) {
+	requires std::same_as<decltype(codec.decode(in, std::span<uint32_t const>{})), field<typename C::value_type>>;
+	{ codec.covered_tags(value) } -> std::same_as<std::span<uint32_t const>>;
 };
 
 }  // namespace klv

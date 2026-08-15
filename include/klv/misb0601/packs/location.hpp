@@ -51,7 +51,7 @@ struct location_codec {
 			return std::unexpected(longitude.error());
 		}
 
-		auto result = location{.latitude = *latitude, .longitude = *longitude};
+		auto result = location{.latitude = *latitude, .longitude = *longitude, .height = std::nullopt};
 		if (in.size() == 11) {
 			auto const height = height_format.decode(in.subspan(8));
 			if (!height) {

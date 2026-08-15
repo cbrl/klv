@@ -20,7 +20,9 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <span>
 #include <utility>
+#include <vector>
 
 namespace klv {
 
@@ -32,9 +34,22 @@ struct decode_options {
 
 namespace detail {
 
+/// Decode one occurrence with `codec`. A covering codec also gets the tags of the items before the occurrence.
+template<typename C>
+[[nodiscard]]
+auto decode_occurrence(C const& codec, byte_span bytes, std::span<uint32_t const> preceding) {
+	if constexpr (covering_codec<C>) {
+		return codec.decode(bytes, preceding);
+	}
+	else {
+		static_cast<void>(preceding);
+		return codec.decode(bytes);
+	}
+}
+
 /// Decode one occurrence of field `E`. Each field of each set instantiates this function. Thus, it stays small.
 template<local_set_definition S, typename E>
-auto decode_into(record<S>& rec, byte_span bytes) -> void {
+auto decode_into(record<S>& rec, byte_span bytes, std::span<uint32_t const> preceding) -> void {
 	auto& value = static_cast<field_slot<E>&>(record_access::slots(rec)).value;
 
 	if constexpr (repeated_codec<codec_of<E>>) {
@@ -51,7 +66,7 @@ auto decode_into(record<S>& rec, byte_span bytes) -> void {
 			return;
 		}
 
-		auto item = E::format.item.decode(bytes);
+		auto item = decode_occurrence(E::format.item, bytes, preceding);
 		if (!item) {
 			value = std::unexpected(item.error());
 			return;
@@ -65,7 +80,7 @@ auto decode_into(record<S>& rec, byte_span bytes) -> void {
 		value = std::unexpected(field_error::empty);
 	}
 	else {
-		value = E::format.decode(bytes);
+		value = decode_occurrence(E::format, bytes, preceding);
 	}
 }
 
@@ -75,7 +90,7 @@ struct set_table;
 template<local_set_definition S, typename... F>
 struct set_table<S, field_list<F...>> {
 	using info = list_info<field_list<F...>>;
-	using decode_function = auto (*)(record<S>&, byte_span) -> void;
+	using decode_function = auto (*)(record<S>&, byte_span, std::span<uint32_t const>) -> void;
 
 	static constexpr auto count = info::count;
 	static constexpr auto max_tag = info::max_tag;
@@ -126,6 +141,9 @@ auto decode_fields(
 	auto reader = byte_reader{value, base_offset};
 	auto rec = record<S>{};
 
+	// Tags of the decoded items, for the fields that cover the items before them
+	auto history = std::vector<uint32_t>{};
+
 	while (!reader.empty()) {
 		auto const tag = reader.read_ber_oid();
 		if (!tag) {
@@ -143,10 +161,14 @@ auto decode_fields(
 		}
 
 		if (auto const decode = table::find(*tag); decode != nullptr) {
-			decode(rec, *bytes);
+			decode(rec, *bytes, history);
 		}
 		else if (options.keep_unknown) {
 			rec.add_unknown(unknown_field{.tag = *tag, .value = byte_vector(bytes->begin(), bytes->end())});
+		}
+
+		if constexpr (has_covering_field<S>) {
+			history.push_back(*tag);
 		}
 
 		if (last != nullptr) {
@@ -164,7 +186,7 @@ auto decode_fields(
  *
  * A malformed tag, length, or field size fails the whole set. A field value that its codec rejects (for example a
  * wrong length or the error value) only marks that field. A field with a length of zero is `field_error::empty`, for
- * each format.
+ * each format. A field of a covering codec (for example an SDCC-FLP) gets the tags of the items before it.
  */
 template<local_set_definition S>
 [[nodiscard]]

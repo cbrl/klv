@@ -48,7 +48,12 @@ struct waypoint_record_codec {
 			return std::unexpected(order.error());
 		}
 
-		auto result = waypoint_record{.id = *id, .order = read_big_endian<int16_t>(*order)};
+		auto result = waypoint_record{
+		    .id = *id,
+		    .order = read_big_endian<int16_t>(*order),
+		    .info = std::nullopt,
+		    .position = std::nullopt,
+		};
 		if (reader.empty()) {
 			return result;
 		}

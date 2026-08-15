@@ -53,7 +53,12 @@ struct countries_codec {
 			return std::unexpected(field_error::invalid_value);
 		}
 
-		auto result = countries{.coding_method = static_cast<misb0102::classifying_country_coding>(raw_method)};
+		auto result = countries{
+		    .coding_method = static_cast<misb0102::classifying_country_coding>(raw_method),
+		    .overflight_country = std::nullopt,
+		    .operator_country = std::nullopt,
+		    .country_of_manufacture = std::nullopt,
+		};
 		for (auto* country : {&result.overflight_country, &result.operator_country, &result.country_of_manufacture}) {
 			if (reader.empty()) {
 				break;

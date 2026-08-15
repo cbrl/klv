@@ -106,7 +106,14 @@ concept mdarray_element =
  *
  * Decoding fails with `field_error::invalid_value` for another algorithm, a malformed pack, or an array with more than
  * `max_elements` elements. An IMAPB special value (for example "below minimum") decodes as NaN. Encoding writes NaN
- * as the IMAPB NaN value. A run-length encoding uses the most common element as the background.
+ * as the IMAPB NaN value.
+ *
+ * Run-length rectangles can overlap. A later rectangle overwrites the elements of an earlier one. Decoding fails when
+ * the rectangles together hold more than `max_patch_area` elements.
+ *
+ * A run-length encoding uses the most common element as the background. On a tie, the element that comes first
+ * wins. Each rectangle starts at the first element that the background and the earlier rectangles do not cover. It
+ * grows along the last dimension, then along each outer dimension, while the new elements are equal to its element.
  */
 template<mdarray_element T>
 struct mdarray {
@@ -114,6 +121,9 @@ struct mdarray {
 
 	/// Largest element count that decoding accepts
 	static constexpr auto max_elements = size_t{1} << 22U;
+
+	/// Largest sum of the run-length rectangle areas that decoding accepts. It limits the work for each array.
+	static constexpr auto max_patch_area = 4 * max_elements;
 
 	[[nodiscard]]
 	auto decode(byte_span in) const -> field<value_type> {
@@ -385,8 +395,8 @@ private:
 			}
 			auto const element = read_natural(*bytes);
 
-			auto start = std::vector<uint32_t>(sizes.size());
-			auto extent = std::vector<uint32_t>(sizes.size());
+			auto start = std::vector<size_t>(sizes.size());
+			auto extent = std::vector<size_t>(sizes.size());
 			for (auto* list : {&start, &extent}) {
 				for (auto& item : *list) {
 					auto const value = detail::read_oid(reader);
@@ -397,7 +407,7 @@ private:
 				}
 			}
 
-			// Each rectangle must be inside the array. Together they can cover each element once.
+			// Each rectangle must be inside the array. Rectangles can overlap, and the last one wins.
 			auto area = size_t{1};
 			for (auto k = size_t{0}; k < sizes.size(); ++k) {
 				if (extent[k] == 0 || start[k] >= sizes[k] || extent[k] > sizes[k] - start[k]) {
@@ -406,26 +416,14 @@ private:
 				area *= extent[k];
 			}
 			filled += area;
-			if (filled > count) {
+			if (filled > max_patch_area) {
 				return std::unexpected(field_error::invalid_value);
 			}
 
-			auto offset = std::vector<uint32_t>(sizes.size(), 0);
-			for (auto i = size_t{0}; i < area; ++i) {
-				auto index = size_t{0};
-				for (auto k = size_t{0}; k < sizes.size(); ++k) {
-					index += (size_t{start[k]} + offset[k]) * strides[k];
-				}
+			visit_rectangle(strides, start, extent, [&](size_t index) {
 				result.elements[index] = element;
-
-				// Step to the next element of the rectangle. The last dimension changes fastest.
-				for (auto k = sizes.size(); k > 0; --k) {
-					if (++offset[k - 1] < extent[k - 1]) {
-						break;
-					}
-					offset[k - 1] = 0;
-				}
-			}
+				return true;
+			});
 		}
 		return {};
 	}
@@ -501,7 +499,7 @@ private:
 		}
 	}
 
-	/// Write the background element, then one rectangle for each run of equal elements along the last dimension
+	/// Write the background element, then one rectangle for each block of equal elements that it does not cover
 	static auto encode_run_length(value_type const& value, byte_writer& out) -> encode_result {
 		if (!is_natural_size(value.element_size)) {
 			return std::unexpected(field_error::invalid_value);
@@ -511,35 +509,96 @@ private:
 		auto status = put_natural(background, value.element_size, out);
 
 		auto const& sizes = value.sizes;
-		auto const width = size_t{sizes.back()};
+		auto const dimensions = sizes.size();
 		auto const strides = strides_of(sizes);
+		auto covered = std::vector<bool>(value.elements.size());
 
-		for (auto row = size_t{0}; status && row < value.elements.size(); row += width) {
-			for (auto column = size_t{0}; status && column < width;) {
-				auto const element = value.elements[row + column];
-				auto end = column + 1;
-				while (end < width && same_bits(value.elements[row + end], element)) {
-					++end;
-				}
+		// The elements of a rectangle that the background and the earlier rectangles do not cover, all equal
+		auto const fits = [&](std::vector<size_t> const& start, std::vector<size_t> const& extent, T element) {
+			return visit_rectangle(strides, start, extent, [&](size_t index) {
+				return !covered[index] && same_bits(value.elements[index], element);
+			});
+		};
 
-				if (!same_bits(element, background)) {
-					status = put_natural(element, value.element_size, out);
+		for (auto first = size_t{0}; status && first < value.elements.size(); ++first) {
+			auto const element = value.elements[first];
+			if (covered[first] || same_bits(element, background)) {
+				continue;
+			}
 
-					// Coordinates of the run start, then its extent in each dimension
-					auto index = row + column;
-					for (auto k = size_t{0}; k < sizes.size(); ++k) {
-						out.put_ber_oid(static_cast<uint32_t>(index / strides[k]));
-						index %= strides[k];
+			auto start = std::vector<size_t>(dimensions);
+			auto index = first;
+			for (auto k = size_t{0}; k < dimensions; ++k) {
+				start[k] = index / strides[k];
+				index %= strides[k];
+			}
+
+			// Grow along the last dimension first. Each step adds one slice of the rectangle.
+			auto extent = std::vector<size_t>(dimensions, 1);
+			for (auto k = dimensions; k > 0; --k) {
+				auto const dimension = k - 1;
+				auto slice_start = start;
+				auto slice_extent = extent;
+				slice_extent[dimension] = 1;
+				for (;;) {
+					slice_start[dimension] = start[dimension] + extent[dimension];
+					if (slice_start[dimension] >= sizes[dimension] || !fits(slice_start, slice_extent, element)) {
+						break;
 					}
-					for (auto k = size_t{0}; k + 1 < sizes.size(); ++k) {
-						out.put_ber_oid(1);
-					}
-					out.put_ber_oid(static_cast<uint32_t>(end - column));
+					++extent[dimension];
 				}
-				column = end;
+			}
+
+			visit_rectangle(strides, start, extent, [&](size_t covered_index) {
+				covered[covered_index] = true;
+				return true;
+			});
+
+			status = put_natural(element, value.element_size, out);
+			for (auto const* list : {&start, &extent}) {
+				for (auto const item : *list) {
+					out.put_ber_oid(static_cast<uint32_t>(item));
+				}
 			}
 		}
 		return status;
+	}
+
+	/**
+	 * @brief Call `visit(index)` for each element of a rectangle, in row-major order
+	 *
+	 * The rectangle starts at `start` and has `extent` elements in each dimension. The function stops when `visit`
+	 * returns false. It returns false in that case, and true otherwise.
+	 */
+	template<typename F>
+	static auto visit_rectangle(
+	    std::vector<size_t> const& strides,
+	    std::vector<size_t> const& start,
+	    std::vector<size_t> const& extent,
+	    F&& visit
+	) -> bool {
+		auto offset = std::vector<size_t>(start.size(), 0);
+		for (;;) {
+			auto index = size_t{0};
+			for (auto k = size_t{0}; k < start.size(); ++k) {
+				index += (start[k] + offset[k]) * strides[k];
+			}
+			if (!visit(index)) {
+				return false;
+			}
+
+			// Step to the next element. The last dimension changes fastest.
+			auto k = start.size();
+			for (; k > 0; --k) {
+				if (++offset[k - 1] < extent[k - 1]) {
+					break;
+				}
+				offset[k - 1] = 0;
+			}
+			if (k == 0) {
+				return true;
+			}
+		}
 	}
 
 	/// Distance between two neighbors along each dimension, in elements
@@ -564,28 +623,26 @@ private:
 	}
 
 	[[nodiscard]]
-	static auto from_bits(uint64_t bits) noexcept -> T {
-		if constexpr (std::same_as<T, bool>) {
-			return bits != 0;
-		}
-		else {
-			return std::bit_cast<T>(bits);
-		}
-	}
-
-	[[nodiscard]]
 	static auto same_bits(T lhs, T rhs) noexcept -> bool {
 		return bits_of(lhs) == bits_of(rhs);
 	}
 
+	/// The most common element. On a tie, the element that comes first.
 	[[nodiscard]]
 	static auto most_common(std::vector<T> const& elements) -> T {
 		auto counts = std::map<uint64_t, size_t>{};
 		for (auto const element : elements) {
 			++counts[bits_of(element)];
 		}
-		auto const best = std::ranges::max_element(counts, {}, [](auto const& entry) { return entry.second; });
-		return from_bits(best->first);
+		auto best = elements.front();
+		auto best_count = size_t{0};
+		for (auto const element : elements) {
+			if (auto const count = counts[bits_of(element)]; count > best_count) {
+				best = element;
+				best_count = count;
+			}
+		}
+		return best;
 	}
 };
 

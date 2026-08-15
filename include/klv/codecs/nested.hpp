@@ -62,6 +62,10 @@ namespace klv::codec {
 
 /**
  * @brief A local set inside a field of another set (for example MISB ST 0102 in ST 0601 tag 48)
+ *
+ * An embedded set omits its checksum. MISB ST 0903.6-120 and ST 1002.3-25 require this, and the checksum of the
+ * parent packet covers the nested bytes. Decoding keeps a checksum value that a producer sends anyway, but does not
+ * verify it. Encoding does not write it.
  */
 template<local_set_definition S>
 struct nested {

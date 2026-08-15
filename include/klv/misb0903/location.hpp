@@ -182,7 +182,13 @@ struct location_codec {
 			return std::unexpected(values.error());
 		}
 
-		auto result = location{.latitude = (*values)[0], .longitude = (*values)[1], .height = (*values)[2]};
+		auto result = location{
+		    .latitude = (*values)[0],
+		    .longitude = (*values)[1],
+		    .height = (*values)[2],
+		    .sigma = std::nullopt,
+		    .rho = std::nullopt,
+		};
 		if (auto status = detail::read_precision(reader, result.sigma, result.rho); !status) {
 			return std::unexpected(status.error());
 		}
@@ -227,7 +233,13 @@ struct motion_codec {
 			return std::unexpected(values.error());
 		}
 
-		auto result = motion{.east = (*values)[0], .north = (*values)[1], .up = (*values)[2]};
+		auto result = motion{
+		    .east = (*values)[0],
+		    .north = (*values)[1],
+		    .up = (*values)[2],
+		    .sigma = std::nullopt,
+		    .rho = std::nullopt,
+		};
 		if (auto status = detail::read_precision(reader, result.sigma, result.rho); !status) {
 			return std::unexpected(status.error());
 		}

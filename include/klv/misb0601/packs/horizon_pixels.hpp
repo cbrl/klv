@@ -61,6 +61,7 @@ struct horizon_pixels_codec {
 		    .y0 = std::to_integer<uint8_t>(in[1]),
 		    .x1 = std::to_integer<uint8_t>(in[2]),
 		    .y1 = std::to_integer<uint8_t>(in[3]),
+		    .locations = std::nullopt,
 		};
 		if (in.size() == 4) {
 			return result;

@@ -27,7 +27,12 @@ namespace klv::misb0601 {
 struct segment_local_set;
 struct amend_local_set;
 
-/// Standard deviations and correlations of the items before it (MISB ST 1010). The set can hold it more than once.
+/**
+ * @brief Standard deviations and correlations of the items before it (MISB ST 1010)
+ *
+ * The set can hold it more than once. ST 0601 requires Mode 2 parse control and IEEE 754 standard deviations. Only
+ * the items with "Y" in the SDCC column of ST 0601 Table 1 can be covered items.
+ */
 struct sdcc_flp {
 	static constexpr uint32_t tag = 102;
 	static constexpr std::string_view name = "SDCC-FLP";

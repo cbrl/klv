@@ -42,7 +42,7 @@ struct command_record_codec {
 			return std::unexpected(text.error());
 		}
 
-		auto result = command_record{.id = *id, .text = detail::to_text(*text)};
+		auto result = command_record{.id = *id, .text = detail::to_text(*text), .time = std::nullopt};
 		if (!reader.empty()) {
 			auto const time = codec::timestamp{}.decode(reader.rest());
 			if (!time) {
