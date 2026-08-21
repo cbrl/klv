@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <concepts>
 #include <cstdint>
+#include <expected>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +58,24 @@ struct inner {
 struct sample_ls {
 	static constexpr std::string_view name = "Sample";
 	using fields = field_list<label, count, angle, inner, high_tag>;
+};
+
+struct note {
+	static constexpr uint32_t tag = 5;
+	static constexpr std::string_view name = "Note";
+	static constexpr codec::repeated<codec::string> format{};
+};
+
+struct inners {
+	static constexpr uint32_t tag = 6;
+	static constexpr std::string_view name = "Inners";
+	static constexpr codec::repeated<codec::nested<inner_ls>> format{};
+};
+
+/// A set with repeated fields
+struct repeated_ls {
+	static constexpr std::string_view name = "Repeated";
+	using fields = field_list<count, note, inners>;
 };
 
 }  // namespace sample
@@ -256,4 +276,114 @@ TEST_CASE("KLV describe lists display text with nested prefixes", "[klv]") {
 	CHECK(text[3].value == std::string{"55"});
 
 	CHECK(describe(rec, true).size() == 6);
+}
+
+TEST_CASE("KLV repeated field collects each occurrence in order", "[klv]") {
+	auto inner_7 = byte_vector{};
+	append_field(inner_7, 1, make_bytes({0x07}));
+	auto inner_8 = byte_vector{};
+	append_field(inner_8, 1, make_bytes({0x08}));
+
+	// Definition order: count, note, inners
+	auto data = byte_vector{};
+	append_field(data, 1, make_bytes({0x05}));
+	append_field(data, 5, make_bytes({'h', 'i'}));
+	append_field(data, 5, make_bytes({'y', 'o', 'u'}));
+	append_field(data, 6, inner_7);
+	append_field(data, 6, inner_8);
+
+	auto const rec = decode_set<sample::repeated_ls>(data);
+	REQUIRE(rec);
+	CHECK(rec->get<sample::note>() == std::vector<std::string>{"hi", "you"});
+	auto const& inners = rec->get<sample::inners>();
+	REQUIRE(inners);
+	REQUIRE(inners->size() == 2);
+	CHECK((*inners)[0].get<sample::count>() == uint8_t{7});
+	CHECK((*inners)[1].get<sample::count>() == uint8_t{8});
+
+	// Encoding writes one field for each item, at the position of the field
+	CHECK(encode_set(*rec) == data);
+
+	SECTION("add appends items") {
+		auto built = record<sample::repeated_ls>{};
+		built.set<sample::count>(5);
+		built.add<sample::note>("hi");
+		built.add<sample::note>("you");
+		built.add<sample::inners>((*inners)[0]);
+		built.add<sample::inners>((*inners)[1]);
+		CHECK(built == *rec);
+	}
+
+	SECTION("an occurrence that does not decode marks the field") {
+		auto bad = byte_vector{};
+		append_field(bad, 6, make_bytes({0x01, 0x05, 0x00}));
+		append_field(bad, 6, inner_8);
+		auto const with_bad = decode_set<sample::repeated_ls>(bad);
+		REQUIRE(with_bad);
+		CHECK(with_bad->get<sample::inners>() == std::unexpected(field_error::invalid_value));
+	}
+
+	SECTION("describe lists each nested set with its index") {
+		auto const text = describe(*rec);
+		REQUIRE(text.size() == 4);
+		CHECK(text[0].name == "Count");
+		CHECK(text[1].name == "Note");
+		CHECK(text[1].value == std::string{"[hi, you]"});
+		CHECK(text[2].name == "Inners[0].Count");
+		CHECK(text[2].value == std::string{"7"});
+		CHECK(text[3].name == "Inners[1].Count");
+	}
+}
+
+TEST_CASE("KLV zero-length field is empty for each format", "[klv]") {
+	// Definition order: label, count, angle, inner
+	auto data = byte_vector{};
+	append_field(data, 2, {});
+	append_field(data, 1, {});
+	append_field(data, 3, {});
+	append_field(data, 4, {});
+
+	auto const rec = decode_set<sample::sample_ls>(data);
+	REQUIRE(rec);
+	CHECK(rec->get<sample::label>() == std::unexpected(field_error::empty));
+	CHECK(rec->get<sample::count>() == std::unexpected(field_error::empty));
+	CHECK(rec->get<sample::angle>() == std::unexpected(field_error::empty));
+	CHECK(rec->get<sample::inner>() == std::unexpected(field_error::empty));
+	CHECK(rec->get<sample::high_tag>() == std::unexpected(field_error::absent));
+
+	// Encoding writes an empty field with a length of zero
+	CHECK(encode_set(*rec) == data);
+
+	auto built = record<sample::sample_ls>{};
+	built.set_empty<sample::label>();
+	built.set_empty<sample::count>();
+	built.set_empty<sample::angle>();
+	built.set_empty<sample::inner>();
+	CHECK(built == *rec);
+
+	auto const text = describe(*rec);
+	REQUIRE(text.size() == 4);
+	CHECK(text[0].value == std::unexpected(field_error::empty));
+	CHECK(to_string(field_error::empty) == "empty");
+}
+
+TEST_CASE("KLV zero-length occurrence of a repeated field", "[klv]") {
+	SECTION("without other occurrences, the field is empty") {
+		auto data = byte_vector{};
+		append_field(data, 5, {});
+		auto const rec = decode_set<sample::repeated_ls>(data);
+		REQUIRE(rec);
+		CHECK(rec->get<sample::note>() == std::unexpected(field_error::empty));
+		CHECK(encode_set(*rec) == data);
+	}
+
+	SECTION("with other occurrences, the zero-length occurrence adds no item") {
+		auto data = byte_vector{};
+		append_field(data, 5, make_bytes({'h', 'i'}));
+		append_field(data, 5, {});
+		append_field(data, 5, make_bytes({'y', 'o', 'u'}));
+		auto const rec = decode_set<sample::repeated_ls>(data);
+		REQUIRE(rec);
+		CHECK(rec->get<sample::note>() == std::vector<std::string>{"hi", "you"});
+	}
 }

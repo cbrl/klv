@@ -205,3 +205,11 @@ TEST_CASE("KLV packet checksum sums big-endian byte pairs", "[klv]") {
 	CHECK(packet_checksum(make_bytes({0xFF, 0xFF, 0x00, 0x02})) == 0x0001);
 	CHECK(packet_checksum({}) == 0);
 }
+
+TEST_CASE("KLV CRC functions give the standard check values", "[klv]") {
+	// An empty input gives the initial value. The check value is the CRC of the ASCII text "123456789".
+	auto const text = hex("31 32 33 34 35 36 37 38 39");
+	STATIC_CHECK(crc16_ccitt({}) == 0x1D0F);
+	CHECK(crc16_ccitt(text) == 0xE5CC);
+	CHECK(crc32_mpeg2(text) == 0x0376'E6E7);
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -8,6 +9,12 @@
 #include "klv/bytes.hpp"
 
 namespace klv_test {
+
+/// Time stamp from a count of microseconds
+[[nodiscard]]
+inline auto micros(int64_t count) -> klv::timestamp {
+	return klv::timestamp{std::chrono::microseconds{count}};
+}
 
 /// Bytes from integer literals
 [[nodiscard]]
