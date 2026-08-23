@@ -11,6 +11,7 @@ the local sets that nest in it:
 - ST 1601 (Geo-Registration)
 - ST 1602 (Composite Imaging)
 - ST 1607 (Segment and Amend)
+- ST 1204 (MIIS Core Identifier)
 
 ## Decoding
 
@@ -68,16 +69,6 @@ a 16-bit sum, ST 1002 uses CRC-16-CCITT, and ST 0806 uses CRC-32/MPEG-2.
 A set inside another set has no checksum, as ST 0903.6 and ST 1002.3 require.
 The checksum of the parent packet covers the nested bytes. The decoder keeps a
 nested checksum value that a producer sends anyway, but does not verify it.
-
-### SDCC-FLP
-
-An ST 1010 SDCC-FLP covers the items directly before it. The decoder stores
-their tags in `sdcc_flp::members`. The encoder writes the items that `members`
-names directly before each pack. ST 0601 and ST 1202 define no IMAPB ranges for
-standard deviations, so their standard deviations use IEEE 754. A parent
-standard that defines these ranges (for example ST 1107) gives them to the
-codec as `sigma_ranges`. Without the ranges, IMAPB standard deviations stay raw
-integers in `sdcc_flp::sigma_raw`.
 
 ## Defining fields and sets
 

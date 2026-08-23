@@ -14,6 +14,7 @@
 #include "klv/misb0806.hpp"
 #include "klv/misb0903.hpp"
 #include "klv/misb1002.hpp"
+#include "klv/misb1204.hpp"
 #include "klv/misb1206.hpp"
 #include "klv/misb1601.hpp"
 #include "klv/misb1602.hpp"
@@ -332,6 +333,12 @@ TEST_CASE("KLV ST 0601 variable-length integer fields decode short encodings", "
 TEST_CASE("KLV ST 0601 extended fields round-trip through a packet", "[klv][misb0601]") {
 	auto const start = timestamp{std::chrono::microseconds{1'700'000'000'000'000}};
 
+	// The example of MISB ST 1204.3 section 7.4.2
+	auto const core_id = misb1204::parse_core_id(
+	    "0170:F592-F023-7336-4AF8-AA91-62C0-0F2E-B2DA/16B7-4341-0008-41A0-BE36-5B5A-B96A-3645:D3"
+	);
+	REQUIRE(core_id);
+
 	auto uas = uas_record{};
 	uas.set<kv::precision_time_stamp>(start);
 	uas.set<kv::offset_corner_latitude_point_2>(-0.0125);
@@ -343,7 +350,7 @@ TEST_CASE("KLV ST 0601 extended fields round-trip through a packet", "[klv][misb
 	uas.set<kv::event_start_time_utc>(start);
 	uas.set<kv::operational_mode>(kv::operation_type::exercise);
 	uas.set<kv::corner_longitude_point_3_full>(151.2093);
-	uas.set<kv::miis_core_identifier>(hex("01 70 F5 92 F0 23 73 36 4A F8 AA 91 62 C0 0F 2E B2 DA"));
+	uas.set<kv::miis_core_identifier>(*core_id);
 	uas.set<kv::stream_designator>("BLUE");
 	uas.set<kv::target_id>("TGT-0042");
 	uas.set<kv::take_off_time>(start);
@@ -364,7 +371,7 @@ TEST_CASE("KLV ST 0601 extended fields round-trip through a packet", "[klv][misb
 	CHECK(decoded->get<kv::event_start_time_utc>() == start);
 	CHECK(decoded->get<kv::operational_mode>() == kv::operation_type::exercise);
 	CHECK(decoded->get<kv::corner_longitude_point_3_full>().value() == Approx(151.2093).margin(1e-7));
-	CHECK(decoded->get<kv::miis_core_identifier>() == uas.get<kv::miis_core_identifier>());
+	CHECK(decoded->get<kv::miis_core_identifier>() == *core_id);
 	CHECK(decoded->get<kv::stream_designator>() == std::string{"BLUE"});
 	CHECK(decoded->get<kv::target_id>() == std::string{"TGT-0042"});
 	CHECK(decoded->get<kv::take_off_time>() == start);

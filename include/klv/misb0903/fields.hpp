@@ -9,6 +9,7 @@
 #include "klv/misb0903/algorithm_ls.hpp"
 #include "klv/misb0903/ontology_ls.hpp"
 #include "klv/misb0903/vtarget_ls.hpp"
+#include "klv/misb1204.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -97,7 +98,7 @@ struct vmti_vertical_field_of_view {
 struct miis_id {
 	static constexpr uint32_t tag = 13;
 	static constexpr std::string_view name = "MIIS ID";
-	static constexpr codec::bytes format{};
+	static constexpr misb1204::core_id_codec format{};
 };
 
 struct vtarget_series {

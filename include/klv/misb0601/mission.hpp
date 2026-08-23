@@ -11,6 +11,7 @@
 #include "klv/misb0601/packs/command_record.hpp"
 #include "klv/misb0601/packs/countries.hpp"
 #include "klv/misb0806/rvt_ls.hpp"
+#include "klv/misb1204.hpp"
 
 #include <cstdint>
 #include <string_view>
@@ -83,10 +84,11 @@ struct operational_mode {
 	static constexpr codec::enumeration<operation_type> format{.name_of = &to_string};
 };
 
+/// MISB ST 1204 Motion Imagery Identification System core identifier
 struct miis_core_identifier {
 	static constexpr uint32_t tag = 94;
 	static constexpr std::string_view name = "MIIS Core Identifier";
-	static constexpr codec::bytes format{};
+	static constexpr misb1204::core_id_codec format{};
 };
 
 struct stream_designator {
