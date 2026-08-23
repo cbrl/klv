@@ -7,6 +7,7 @@
 #include "klv/misb0806.hpp"
 #include "klv/misb0903.hpp"
 #include "klv/misb1002.hpp"
+#include "klv/misb1108.hpp"
 #include "klv/misb1202.hpp"
 #include "klv/misb1204.hpp"
 #include "klv/misb1206.hpp"
