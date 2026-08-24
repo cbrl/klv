@@ -17,6 +17,25 @@
 #include <expected>
 #include <format>
 #include <string>
+#include <tuple>
+
+namespace klv {
+
+/// MISB ST 1201 IMAPB value and its byte length, for a format whose length the producer chooses (see
+/// `codec::imapb_value`)
+struct imapb_value {
+	static constexpr auto default_length = size_t{4};
+
+	double value = 0.0;
+	size_t length = default_length;  ///< 1 to 8 bytes. A longer length gives a smaller step.
+
+	// Exact comparison. std::tie compares in the standard library, which keeps -Wfloat-equal quiet.
+	friend auto operator==(imapb_value const& lhs, imapb_value const& rhs) -> bool {
+		return std::tie(lhs.value, lhs.length) == std::tie(rhs.value, rhs.length);
+	}
+};
+
+}  // namespace klv
 
 namespace klv::codec {
 
@@ -220,6 +239,71 @@ private:
 	double max_;
 	size_t length_;
 	int b_pow_;
+};
+
+/**
+ * @brief IMAPB value whose byte length the producer chooses at run time (for example in MISB ST 1107)
+ *
+ * The value is a `klv::imapb_value`. Decoding keeps the byte length, so the value encodes again to the same bytes.
+ * Encoding fails with `field_error::bad_length` for a length outside 1 to 8. Special values decode and encode as in
+ * `codec::imapb`. The error indicator has `klv::imapb_value::default_length` bytes.
+ *
+ * @code
+ * static constexpr codec::imapb_value format{-1.0e9, 1.0e9};
+ * @endcode
+ */
+class imapb_value {
+public:
+	using value_type = klv::imapb_value;
+
+	constexpr imapb_value(double min, double max) :
+	    min_(min),
+	    max_(max) {
+		detail::require(min < max, "An IMAPB format needs min < max");
+	}
+
+	[[nodiscard]]
+	constexpr auto min() const noexcept -> double {
+		return min_;
+	}
+
+	[[nodiscard]]
+	constexpr auto max() const noexcept -> double {
+		return max_;
+	}
+
+	[[nodiscard]]
+	auto decode(byte_span in) const -> field<klv::imapb_value> {
+		if (in.empty() || in.size() > imapb::max_length) {
+			return std::unexpected(field_error::bad_length);
+		}
+		return imapb{min_, max_, in.size()}.decode(in).transform([&](double value) {
+			return klv::imapb_value{.value = value, .length = in.size()};
+		});
+	}
+
+	[[nodiscard]]
+	auto encode(klv::imapb_value const& value, byte_writer& out) const -> encode_result {
+		if (value.length == 0 || value.length > imapb::max_length) {
+			return std::unexpected(field_error::bad_length);
+		}
+		return imapb{min_, max_, value.length}.encode(value.value, out);
+	}
+
+	/// Write the positive quiet NaN special value
+	[[nodiscard]]
+	auto encode_error_indicator(byte_writer& out) const -> encode_result {
+		return imapb{min_, max_, klv::imapb_value::default_length}.encode_error_indicator(out);
+	}
+
+	[[nodiscard]]
+	auto to_string(klv::imapb_value const& value) const -> std::string {
+		return std::format("{:.6f}", value.value);
+	}
+
+private:
+	double min_;
+	double max_;
 };
 
 }  // namespace klv::codec

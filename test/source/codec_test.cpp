@@ -278,6 +278,30 @@ TEST_CASE("KLV IMAPB codec special values and range checks", "[klv]") {
 	CHECK(altitude.decode(make_bytes({0x80, 0x00, 0x00})) == std::unexpected(field_error::out_of_range));
 }
 
+TEST_CASE("KLV IMAPB value codec keeps the byte length", "[klv]") {
+	constexpr auto offset = codec::imapb_value{-300.0, 300.0};
+
+	// One step is 2^-5 with 2 bytes. With 1 byte, one step is 2^3 and the zero offset is 0.5.
+	auto const two = offset.decode(make_bytes({0x44, 0x00}));
+	CHECK(two == imapb_value{.value = 244.0, .length = 2});
+	CHECK(encode(offset, *two) == make_bytes({0x44, 0x00}));
+	CHECK(offset.decode(make_bytes({0x44})) == imapb_value{.value = 240.0, .length = 1});
+	CHECK(encode(offset, imapb_value{.value = 244.0}) == make_bytes({0x44, 0x00, 0x00, 0x00}));
+
+	CHECK(offset.decode({}) == std::unexpected(field_error::bad_length));
+	CHECK(offset.decode(byte_vector(9)) == std::unexpected(field_error::bad_length));
+	CHECK(encode(offset, imapb_value{.value = 1.0, .length = 0}) == std::unexpected(field_error::bad_length));
+	CHECK(encode(offset, imapb_value{.value = 1.0, .length = 9}) == std::unexpected(field_error::bad_length));
+
+	// Special values
+	CHECK(offset.decode(make_bytes({0xD0, 0x00})) == std::unexpected(field_error::error_indicator));
+	CHECK(encode(offset, imapb_value{.value = 301.0, .length = 2}) == make_bytes({0xE1, 0x00}));
+	auto out = byte_vector{};
+	auto writer = byte_writer{out};
+	CHECK(offset.encode_error_indicator(writer));
+	CHECK(out == make_bytes({0xD0, 0x00, 0x00, 0x00}));
+}
+
 TEST_CASE("KLV integer codec encodes a fixed or variable length", "[klv]") {
 	constexpr auto u24 = codec::integer<uint32_t>{.length = 3};
 	constexpr auto u64 = codec::integer<uint64_t>{.length = codec::variable_length};
@@ -317,6 +341,23 @@ TEST_CASE("KLV variable IEEE 754 codec accepts both precisions", "[klv]") {
 
 	CHECK(encode(codec::ieee754_variable{.length = 8}, 256.0).value().size() == 8);
 	CHECK(encode(codec::ieee754_variable{.length = 4}, 1e300) == std::unexpected(field_error::out_of_range));
+}
+
+TEST_CASE("KLV variable IEEE 754 codec can decode binary16", "[klv]") {
+	constexpr auto format = codec::ieee754_variable{.binary16 = true};
+
+	CHECK(format.decode(make_bytes({0x3C, 0x00})) == 1.0);
+	CHECK(format.decode(make_bytes({0xC0, 0x00})) == -2.0);
+	CHECK(format.decode(make_bytes({0x7B, 0xFF})) == 65'504.0);
+	CHECK(format.decode(make_bytes({0x35, 0x55})) == 0.333'251'953'125);
+	CHECK(format.decode(make_bytes({0x00, 0x01})) == std::ldexp(1.0, -24));
+	CHECK(format.decode(make_bytes({0x80, 0x00})) == 0.0);
+	CHECK(format.decode(make_bytes({0xFC, 0x00})) == -std::numeric_limits<double>::infinity());
+	CHECK(std::isnan(format.decode(make_bytes({0x7E, 0x00})).value()));
+	CHECK(format.decode(make_bytes({0x3F, 0x80, 0x00, 0x00})) == 1.0);
+
+	// Encoding never writes binary16
+	CHECK(encode(format, 1.0) == make_bytes({0x3F, 0x80, 0x00, 0x00}));
 }
 
 TEST_CASE("KLV UUID codec", "[klv]") {

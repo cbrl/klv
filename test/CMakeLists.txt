@@ -26,6 +26,7 @@ add_executable(
     source/misb0806_test.cpp
     source/misb0903_test.cpp
     source/misb1002_test.cpp
+    source/misb1107_test.cpp
     source/misb1108_test.cpp
     source/misb1202_test.cpp
     source/misb1204_test.cpp

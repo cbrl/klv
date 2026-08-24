@@ -57,21 +57,27 @@ struct ieee754 {
 /**
  * @brief IEEE 754 value of either precision: binary32 (4 bytes) or binary64 (8 bytes)
  *
- * Decoding accepts both lengths. Encoding writes `length` bytes. With `variable_length`, it writes 4 bytes when a
- * binary32 value holds the value exactly, and 8 bytes otherwise.
+ * Decoding accepts both lengths. With `binary16`, decoding also accepts a 2-byte binary16 value (for example in MISB
+ * ST 1107). Encoding writes `length` bytes. With `variable_length`, it writes 4 bytes when a binary32 value holds the
+ * value exactly, and 8 bytes otherwise. Encoding never writes binary16.
  *
  * @code
  * static constexpr codec::ieee754_variable format{};                // 4 or 8 bytes
  * static constexpr codec::ieee754_variable format{.length = 8};     // 8 bytes
+ * static constexpr codec::ieee754_variable format{.binary16 = true}; // Also decode 2 bytes
  * @endcode
  */
 struct ieee754_variable {
 	using value_type = double;
 
 	size_t length = variable_length;
+	bool binary16 = false;
 
 	[[nodiscard]]
 	auto decode(byte_span in) const -> field<double> {
+		if (binary16 && in.size() == 2) {
+			return detail::read_binary16(in);
+		}
 		return detail::read_ieee(in);
 	}
 

@@ -65,6 +65,27 @@ inline auto read_ieee(byte_span bytes) -> field<double> {
 	return std::unexpected(field_error::bad_length);
 }
 
+/// IEEE 754 binary16 value of 2 bytes
+[[nodiscard]]
+inline auto read_binary16(byte_span bytes) -> double {
+	auto const bits = read_big_endian<uint16_t>(bytes);
+	auto const exponent = (bits >> 10U) & 0x1FU;
+	auto const fraction = bits & 0x3FFU;
+
+	auto value = 0.0;
+	if (exponent == 0) {
+		// Zero or a subnormal value
+		value = std::ldexp(static_cast<double>(fraction), -24);
+	}
+	else if (exponent == 0x1F) {
+		value = fraction == 0 ? std::numeric_limits<double>::infinity() : std::numeric_limits<double>::quiet_NaN();
+	}
+	else {
+		value = std::ldexp(static_cast<double>(fraction + 1024U), static_cast<int>(exponent) - 25);
+	}
+	return (bits & 0x8000U) != 0 ? -value : value;
+}
+
 /**
  * @brief Write an IEEE 754 value of 4 or 8 bytes
  *
