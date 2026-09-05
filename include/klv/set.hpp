@@ -11,4 +11,5 @@
 #include "klv/set/definition.hpp"
 #include "klv/set/describe.hpp"
 #include "klv/set/encode.hpp"
+#include "klv/set/profile.hpp"
 #include "klv/set/record.hpp"
