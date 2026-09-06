@@ -1,6 +1,6 @@
 /**
  * @file klv/codecs/timestamp.hpp
- * @brief MISB precision time stamp codec
+ * @brief MISB ST 0603 time stamp codecs: the Precision Time Stamp and the Nano Precision Time Stamp
  */
 
 #pragma once
@@ -21,22 +21,25 @@
 namespace klv::codec {
 
 /**
- * @brief MISB precision time stamp: 64-bit unsigned count of microseconds since the POSIX epoch
+ * @brief MISB ST 0603 time stamp: 64-bit unsigned count of `Duration` ticks since the POSIX epoch
  *
- * Decoding accepts `min_length` to 8 bytes. Encoding always writes 8 bytes.
+ * Decoding accepts `min_length` to 8 bytes. A count above the `int64_t` range fails with `field_error::out_of_range`.
+ * Encoding always writes 8 bytes.
  *
  * @code
  * static constexpr codec::timestamp format{};                  // Exactly 8 bytes
  * static constexpr codec::timestamp format{.min_length = 1};  // 1 to 8 bytes
+ * static constexpr codec::nano_timestamp format{};             // Nanoseconds, exactly 8 bytes
  * @endcode
  */
-struct timestamp {
-	using value_type = klv::timestamp;
+template<typename Duration>
+struct time_count {
+	using value_type = std::chrono::sys_time<Duration>;
 
 	size_t min_length = sizeof(uint64_t);
 
 	[[nodiscard]]
-	constexpr auto decode(byte_span in) const -> field<klv::timestamp> {
+	constexpr auto decode(byte_span in) const -> field<value_type> {
 		if (in.size() < min_length || in.empty() || in.size() > sizeof(uint64_t)) {
 			return std::unexpected(field_error::bad_length);
 		}
@@ -45,11 +48,11 @@ struct timestamp {
 		if (raw > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
 			return std::unexpected(field_error::out_of_range);
 		}
-		return klv::timestamp{std::chrono::microseconds{static_cast<int64_t>(raw)}};
+		return value_type{Duration{static_cast<int64_t>(raw)}};
 	}
 
 	[[nodiscard]]
-	auto encode(klv::timestamp value, byte_writer& out) const -> encode_result {
+	auto encode(value_type value, byte_writer& out) const -> encode_result {
 		auto const count = value.time_since_epoch().count();
 		if (count < 0) {
 			return std::unexpected(field_error::out_of_range);
@@ -59,9 +62,15 @@ struct timestamp {
 	}
 
 	[[nodiscard]]
-	auto to_string(klv::timestamp value) const -> std::string {
+	auto to_string(value_type value) const -> std::string {
 		return std::format("{:%FT%T}Z", value);
 	}
 };
+
+/// MISB Precision Time Stamp: microseconds since the POSIX epoch
+using timestamp = time_count<std::chrono::microseconds>;
+
+/// MISB Nano Precision Time Stamp: nanoseconds since the POSIX epoch
+using nano_timestamp = time_count<std::chrono::nanoseconds>;
 
 }  // namespace klv::codec

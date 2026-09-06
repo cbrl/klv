@@ -4,6 +4,7 @@ klv is a header-only C++23 library that decodes and encodes KLV (SMPTE 336)
 metadata. It includes definitions for MISB ST 0601 (UAS Datalink Local Set) and
 the local sets that nest in it:
 - ST 0102 (Security)
+- ST 0603 (MISP Time System and Timestamps)
 - ST 0806 (Remote Video Terminal)
 - ST 0902 (Motion Imagery Sensor Minimum Metadata Set)
 - ST 0903 (VMTI)
@@ -15,6 +16,7 @@ the local sets that nest in it:
 - ST 1403 (SARMI Threshold Metadata Sets)
 - ST 1601 (Geo-Registration)
 - ST 1602 (Composite Imaging)
+- ST 1603 (Time Transfer Metadata)
 - ST 1607 (Segment and Amend)
 
 ## Decoding
@@ -109,6 +111,7 @@ The built-in base codecs are:
 - `imapb_value` (MISB ST 1201, with the byte length in the value)
 - `string`
 - `timestamp`
+- `nano_timestamp`
 - `ieee754`
 - `ieee754_variable`
 - `enumeration`
