@@ -14,6 +14,7 @@ the local sets that nest in it:
 - ST 1204 (MIIS Core Identifier)
 - ST 1206 (SAR Motion Imagery)
 - ST 1403 (SARMI Threshold Metadata Sets)
+- ST 1507 (Motion Imagery Sensor Timing)
 - ST 1601 (Geo-Registration)
 - ST 1602 (Composite Imaging)
 - ST 1603 (Time Transfer Metadata)
