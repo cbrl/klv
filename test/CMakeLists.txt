@@ -25,6 +25,7 @@ add_executable(
     source/misb0601_test.cpp
     source/misb0603_test.cpp
     source/misb0806_test.cpp
+    source/misb0809_test.cpp
     source/misb0902_test.cpp
     source/misb0903_test.cpp
     source/misb1002_test.cpp
@@ -36,8 +37,8 @@ add_executable(
     source/misb1403_test.cpp
     source/misb1507_test.cpp
     source/misb1601_test.cpp
-    source/misb1603_test.cpp
     source/misb1602_test.cpp
+    source/misb1603_test.cpp
     source/misb1607_test.cpp
     source/packet_test.cpp
     source/set_test.cpp
