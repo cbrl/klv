@@ -35,6 +35,7 @@ add_executable(
     source/misb1204_test.cpp
     source/misb1206_test.cpp
     source/misb1403_test.cpp
+    source/misb1504_test.cpp
     source/misb1507_test.cpp
     source/misb1601_test.cpp
     source/misb1602_test.cpp

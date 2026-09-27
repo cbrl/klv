@@ -65,6 +65,16 @@ inline auto read_ieee(byte_span bytes) -> field<double> {
 	return std::unexpected(field_error::bad_length);
 }
 
+/// True when an IEEE 754 binary32 value holds `value` exactly. A value that is not finite also gives true.
+[[nodiscard]]
+inline auto fits_binary32(double value) noexcept -> bool {
+	// A finite value is exact in binary32 when the round trip keeps its bits
+	return !std::isfinite(value)
+	    || (std::abs(value) <= double{std::numeric_limits<float>::max()}
+	        && std::bit_cast<uint64_t>(static_cast<double>(static_cast<float>(value)))
+	               == std::bit_cast<uint64_t>(value));
+}
+
 /// IEEE 754 binary16 value of 2 bytes
 [[nodiscard]]
 inline auto read_binary16(byte_span bytes) -> double {

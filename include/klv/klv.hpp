@@ -16,6 +16,7 @@
 #include "klv/misb1204.hpp"
 #include "klv/misb1206.hpp"
 #include "klv/misb1403.hpp"
+#include "klv/misb1504.hpp"
 #include "klv/misb1507.hpp"
 #include "klv/misb1601.hpp"
 #include "klv/misb1602.hpp"

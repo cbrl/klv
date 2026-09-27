@@ -13,13 +13,11 @@
 #include "klv/field.hpp"
 
 #include <bit>
-#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
-#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -86,12 +84,7 @@ struct ieee754_variable {
 		if (length != variable_length) {
 			return detail::put_ieee(value, length, out);
 		}
-		// A finite value is exact in binary32 when the round trip keeps its bits
-		auto const exact = !std::isfinite(value)
-		    || (std::abs(value) <= double{std::numeric_limits<float>::max()}
-		        && std::bit_cast<uint64_t>(static_cast<double>(static_cast<float>(value)))
-		               == std::bit_cast<uint64_t>(value));
-		return detail::put_ieee(value, exact ? sizeof(float) : sizeof(double), out);
+		return detail::put_ieee(value, detail::fits_binary32(value) ? sizeof(float) : sizeof(double), out);
 	}
 
 	[[nodiscard]]
