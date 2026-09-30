@@ -14,6 +14,7 @@ these other MISB standards:
 - ST 1108 (Interpretability and Quality)
 - ST 1204 (MIIS Core Identifier)
 - ST 1206 (SAR Motion Imagery)
+- ST 1301 (MIIS Augmentation Identifiers)
 - ST 1403 (SARMI Threshold Metadata Sets)
 - ST 1504 (Natural Representation of Orbital State Vectors)
 - ST 1507 (Motion Imagery Sensor Timing)
@@ -74,7 +75,7 @@ auto const bytes = klv::encode_packet(uas);  // result<byte_vector>
 The encoder writes the fields in definition order and adds the checksum as the
 last field. Each set uses the checksum of its standard. ST 0601 and ST 0903 use
 a 16-bit sum, ST 1002, ST 1107, ST 1108, ST 1504, and ST 1507 use CRC-16-CCITT,
-and ST 0806 uses CRC-32/MPEG-2. ST 0809 has no checksum.
+and ST 0806 uses CRC-32/MPEG-2. ST 0809 and ST 1301 have no checksum.
 
 A set inside another set has no checksum, as ST 0903.6 and ST 1002.3 require.
 The checksum of the parent packet covers the nested bytes. The decoder keeps a
