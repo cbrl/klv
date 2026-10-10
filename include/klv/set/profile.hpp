@@ -28,7 +28,7 @@ namespace klv {
  * klv::reports<misb0601::security_local_set, misb0102::security_classification>(uas);
  * @endcode
  */
-template<typename E, typename... Inner, local_set_definition S>
+template<typename E, typename... Inner, set_definition S>
 requires member_of<E, S> && (sizeof...(Inner) == 0 || detail::is_record<value_t<E>>::value)
 [[nodiscard]]
 auto reports(record<S> const& rec) noexcept -> bool {

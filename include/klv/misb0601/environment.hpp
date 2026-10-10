@@ -16,7 +16,7 @@ namespace klv::misb0601 {
 struct icing_detected {
 	static constexpr uint32_t tag = 34;
 	static constexpr std::string_view name = "Icing Detected";
-	static constexpr codec::enumeration<icing_state> format{.name_of = &to_string};
+	static constexpr codec::enumeration<icing_state> format{};
 };
 
 struct wind_direction {

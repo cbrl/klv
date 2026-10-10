@@ -10,23 +10,42 @@
 #include "klv/bytes/types.hpp"
 #include "klv/field.hpp"
 
+#include <concepts>
 #include <expected>
 #include <format>
 #include <string>
 #include <string_view>
 #include <type_traits>
 
+namespace klv::detail {
+
+/// The namespace of `Enum` has a `to_string(Enum)` that gives a display name. Argument-dependent lookup finds it.
+template<typename Enum>
+concept named_enumeration = requires(Enum value) {
+	{ to_string(value) } -> std::same_as<std::string_view>;
+};
+
+/// Display name of `value`, from the `to_string(Enum)` that argument-dependent lookup finds
+template<named_enumeration Enum>
+[[nodiscard]]
+constexpr auto enumeration_name(Enum value) -> std::string_view {
+	return to_string(value);
+}
+
+}  // namespace klv::detail
+
 namespace klv::codec {
 
 /**
  * @brief Integer that holds an enumeration value
  *
- * `name_of` gives the display name of each value. It returns an empty view for a value that the standard does not
- * define, and the codec treats such a value as `field_error::invalid_value`. Decoding accepts 1 to
- * `sizeof(underlying_type)` bytes.
+ * The display name of a value comes from `name_of`. Without `name_of`, it comes from the `to_string(Enum)` function in
+ * the namespace of `Enum`. The name function returns an empty view for a value that the standard does not define. The
+ * codec treats such a value as `field_error::invalid_value`. Without a name function, each value is valid. Decoding
+ * accepts 1 to `sizeof(underlying_type)` bytes.
  *
  * @code
- * static constexpr auto format = codec::enumeration<classification>{.name_of = &to_string};
+ * static constexpr auto format = codec::enumeration<classification>{};
  * @endcode
  */
 template<typename Enum>
@@ -36,11 +55,30 @@ struct enumeration {
 	using underlying_type = std::underlying_type_t<Enum>;
 	using name_function = auto (*)(Enum) -> std::string_view;
 
-	name_function name_of = nullptr;
+	name_function name_of = nullptr;  ///< Name function. Null selects the `to_string(Enum)` of the namespace of `Enum`.
+
+	/// Display name of `value`, or an empty view
+	[[nodiscard]]
+	constexpr auto name(Enum value) const -> std::string_view {
+		if (name_of != nullptr) {
+			return name_of(value);
+		}
+		if constexpr (detail::named_enumeration<Enum>) {
+			return detail::enumeration_name(value);
+		}
+		else {
+			return {};
+		}
+	}
 
 	[[nodiscard]]
 	constexpr auto is_defined(Enum value) const -> bool {
-		return name_of == nullptr || !name_of(value).empty();
+		if constexpr (!detail::named_enumeration<Enum>) {
+			if (name_of == nullptr) {
+				return true;
+			}
+		}
+		return !name(value).empty();
 	}
 
 	[[nodiscard]]
@@ -67,10 +105,8 @@ struct enumeration {
 
 	[[nodiscard]]
 	auto to_string(Enum value) const -> std::string {
-		if (name_of != nullptr) {
-			if (auto const name = name_of(value); !name.empty()) {
-				return std::string{name};
-			}
+		if (auto const text = name(value); !text.empty()) {
+			return std::string{text};
 		}
 		return std::format("{}", static_cast<underlying_type>(value));
 	}

@@ -89,14 +89,6 @@ auto make_timing() -> record<st::sensor_timing_ls> {
 	return timing;
 }
 
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
-
 }  // namespace
 
 TEST_CASE("KLV ST 1507 Sensor Timing Local Set packet", "[klv][misb1507]") {
@@ -148,7 +140,7 @@ TEST_CASE("KLV ST 1507 regions of each style", "[klv][misb1507]") {
 	CHECK(*decoded == list);
 
 	// A global shutter region has Tuple 0 and Tuple 3 only
-	CHECK(encode(st::global_shutter::format.item, global) == hex("00 00 81 7A 8F 50 09 13"));
+	CHECK(encode_value(st::global_shutter::format.item, global) == hex("00 00 81 7A 8F 50 09 13"));
 	CHECK(st::global_shutter::format.item.decode(hex("00 00 81 7A 8F 50 09 13")) == global);
 }
 
@@ -156,12 +148,12 @@ TEST_CASE("KLV ST 1507 region errors", "[klv][misb1507]") {
 	constexpr auto format = st::region_codec{};
 
 	// The tuples of the region do not match the tag
-	CHECK(encode(format, region_a) == std::unexpected(field_error::invalid_value));
-	CHECK(encode(st::detector_delay::format.item, global) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(format, region_a) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(st::detector_delay::format.item, global) == std::unexpected(field_error::invalid_value));
 
 	auto early = global;
 	early.end = nanoseconds{-1};
-	CHECK(encode(format, early) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(format, early) == std::unexpected(field_error::out_of_range));
 
 	CHECK(format.decode(hex("00 00 81 7A 8F 50 09")) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(hex("00 00 81 7A 8F 50 09 13 00")) == std::unexpected(field_error::invalid_value));
@@ -173,7 +165,7 @@ TEST_CASE("KLV ST 1507 time offsets use up to 64 bits", "[klv][misb1507]") {
 
 	auto late = global;
 	late.end = nanoseconds{5'000'000'000};
-	auto const bytes = encode(format, late);
+	auto const bytes = encode_value(format, late);
 	CHECK(bytes == hex("00 00 81 7A 92 D0 97 E4 00 09 13"));
 	CHECK(format.decode(hex("00 00 81 7A 92 D0 97 E4 00 09 13")) == late);
 
@@ -195,7 +187,7 @@ TEST_CASE("KLV ST 1507 Window Corners Pack", "[klv][misb1507]") {
 	constexpr auto format = st::window_codec{};
 	auto const window = st::detector_window{.c1 = {.row = 1079, .column = 1919}, .c2 = {.row = 0, .column = 0}};
 
-	CHECK(encode(format, window) == hex("88 37 8E 7F 00 00"));
+	CHECK(encode_value(format, window) == hex("88 37 8E 7F 00 00"));
 	CHECK(format.decode(hex("88 37 8E 7F 00 00")) == window);
 	CHECK(format.to_string(window) == "{c1: (1079, 1919), c2: (0, 0)}");
 

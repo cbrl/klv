@@ -215,7 +215,7 @@ struct target_algorithm_id {
 struct target_detection_status {
 	static constexpr uint32_t tag = 23;
 	static constexpr std::string_view name = "Detection Status";
-	static constexpr codec::enumeration<detection_status> format{.name_of = &to_string};
+	static constexpr codec::enumeration<detection_status> format{};
 };
 
 struct vmask_local_set {

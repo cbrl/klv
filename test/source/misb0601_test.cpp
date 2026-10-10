@@ -35,7 +35,7 @@ namespace vmti = klv::misb0903;
 
 using uas_record = record<kv::uas_datalink_ls>;
 
-static_assert(universal_set_definition<kv::uas_datalink_ls>);
+static_assert(keyed_set_definition<kv::uas_datalink_ls> && local_set_definition<kv::uas_datalink_ls>);
 static_assert(has_checksum<kv::uas_datalink_ls>);
 static_assert(kv::uas_datalink_ls::fields::size == 141);
 
@@ -741,7 +741,7 @@ TEST_CASE("KLV ST 0601 encodes the covered items directly before each SDCC-FLP",
 	uas.set<kv::platform_heading_angle>(90.0);
 	uas.set<kv::mission_id>("M");
 	uas.set<kv::sensor_latitude>(10.0);
-	uas.add_unknown(unknown_field{.tag = 200, .value = hex("AB")});
+	uas.add_unknown(unknown_field<uint32_t>{.id = 200, .value = hex("AB")});
 	uas.add<kv::sdcc_flp>(sdcc_flp{
 	    .size = 2,
 	    .members = {kv::sensor_latitude::tag, kv::platform_heading_angle::tag},

@@ -78,6 +78,46 @@ struct repeated_ls {
 	using fields = field_list<count, note, inners>;
 };
 
+/// A field of a universal set and of a local set
+struct shared_count {
+	static constexpr uint32_t tag = 7;
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 7F 01 01 00 00 00");
+	static constexpr std::string_view name = "Shared Count";
+	static constexpr codec::integer<uint8_t> format{};
+};
+
+struct keyed_label {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 7F 01 02 00 00 00");
+	static constexpr std::string_view name = "Keyed Label";
+	static constexpr codec::string format{.max_length = 8};
+};
+
+struct keyed_angle {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 7F 01 03 00 00 00");
+	static constexpr std::string_view name = "Keyed Angle";
+	static constexpr std::string_view units = "deg";
+	static constexpr codec::mapped<int16_t> format{-20.0, 20.0, codec::sentinel::reserve_min};
+};
+
+/// A universal set: byte 6 of the key is 01. The definition order is not the key order.
+struct keyed_us {
+	static constexpr std::string_view name = "Keyed";
+	static constexpr universal_key key = ul("06 0E 2B 34 02 01 01 01 0E 01 7F 02 00 00 00 00");
+	using fields = field_list<keyed_label, shared_count, keyed_angle>;
+};
+
+struct keyed_holder {
+	static constexpr uint32_t tag = 8;
+	static constexpr std::string_view name = "Holder";
+	static constexpr codec::nested<keyed_us> format{};
+};
+
+/// A local set with the shared field and a universal set inside a field
+struct mixed_ls {
+	static constexpr std::string_view name = "Mixed";
+	using fields = field_list<shared_count, keyed_holder>;
+};
+
 }  // namespace sample
 
 using sample_record = record<sample::sample_ls>;
@@ -90,6 +130,15 @@ static_assert(member_of<sample::count, sample::sample_ls>);
 static_assert(!member_of<misb0601::mission_id, sample::sample_ls>);
 static_assert(units_of<sample::angle>() == "deg");
 static_assert(units_of<sample::count>().empty());
+
+static_assert(universal_set_definition<sample::keyed_us> && keyed_set_definition<sample::keyed_us>);
+static_assert(!local_set_definition<sample::keyed_us>);
+static_assert(local_set_definition<sample::mixed_ls> && !keyed_set_definition<sample::mixed_ls>);
+static_assert(!universal_set_definition<misb0601::uas_datalink_ls>);
+static_assert(std::same_as<item_id_t<sample::keyed_us>, universal_key>);
+static_assert(std::same_as<item_id_t<sample::sample_ls>, uint32_t>);
+static_assert(field_descriptor<sample::keyed_label> && !has_tag<sample::keyed_label>);
+static_assert(has_tag<sample::shared_count> && has_key<sample::shared_count>);
 
 template<typename Record, typename E>
 concept can_get = requires(Record const& rec) { rec.template get<E>(); };
@@ -115,7 +164,7 @@ TEST_CASE("KLV set decodes known, unknown, and out-of-order fields", "[klv]") {
 	CHECK_FALSE(rec->has<sample::label>());
 
 	REQUIRE(rec->unknown().size() == 1);
-	CHECK(rec->unknown()[0] == unknown_field{.tag = 99, .value = make_bytes({0xAA})});
+	CHECK(rec->unknown()[0] == unknown_field<uint32_t>{.id = 99, .value = make_bytes({0xAA})});
 
 	SECTION("keep_unknown = false drops unknown fields") {
 		auto const without = decode_set<sample::sample_ls>(data, {.keep_unknown = false});
@@ -166,7 +215,7 @@ TEST_CASE("KLV set encodes in definition order and decodes back", "[klv]") {
 	rec.set<sample::angle>(5.0);
 	rec.set<sample::count>(3);
 	rec.set<sample::label>("abc");
-	rec.add_unknown({.tag = 77, .value = make_bytes({0x55})});
+	rec.add_unknown({.id = 77, .value = make_bytes({0x55})});
 
 	auto const bytes = encode_set(rec);
 	REQUIRE(bytes);
@@ -207,7 +256,7 @@ TEST_CASE("KLV set encode failure names the field and keeps the buffer", "[klv]"
 	auto const status = encode_set(rec, out);
 	REQUIRE_FALSE(status);
 	CHECK(status.error().code == error_code::invalid_value);
-	CHECK(status.error().message.find("'Label'") != std::string::npos);
+	CHECK(status.error().message.find("'Label' (tag 2)") != std::string::npos);
 	CHECK(out == make_bytes({0xEE}));
 }
 
@@ -257,7 +306,7 @@ TEST_CASE("KLV describe lists display text with nested prefixes", "[klv]") {
 	rec.set<sample::angle>(-20.0);
 	rec.set<sample::inner>(inner);
 	rec.assign<sample::count>(std::unexpected(field_error::bad_length));
-	rec.add_unknown({.tag = 77, .value = make_bytes({0x55})});
+	rec.add_unknown({.id = 77, .value = make_bytes({0x55})});
 
 	auto const text = describe(rec);
 	REQUIRE(text.size() == 4);
@@ -386,4 +435,122 @@ TEST_CASE("KLV zero-length occurrence of a repeated field", "[klv]") {
 		REQUIRE(rec);
 		CHECK(rec->get<sample::note>() == std::vector<std::string>{"hi", "you"});
 	}
+}
+
+namespace {
+
+/// Append one universal set item (key, BER length, value) to `out`
+auto append_item(byte_vector& out, universal_key const& key, byte_span value) -> void {
+	klv_test::append_packet(out, key, value);
+}
+
+constexpr auto unknown_key = ul("06 0E 2B 34 01 01 01 01 0E 01 7F 01 7F 00 00 00");
+
+}  // namespace
+
+TEST_CASE("KLV universal set decodes items by key in any order", "[klv]") {
+	// A key with another version byte is the same key
+	auto count_key = sample::shared_count::key;
+	count_key[7] = std::byte{0x0D};
+
+	auto data = byte_vector{};
+	append_item(data, sample::keyed_angle::key, make_bytes({0x80, 0x01}));
+	append_item(data, unknown_key, make_bytes({0xAA, 0xBB}));
+	append_item(data, count_key, make_bytes({0x07}));
+	append_item(data, sample::keyed_label::key, make_bytes({'u', 's'}));
+
+	auto const rec = decode_set<sample::keyed_us>(data);
+	REQUIRE(rec);
+	CHECK(rec->get<sample::keyed_angle>() == -20.0);
+	CHECK(rec->get<sample::shared_count>() == uint8_t{7});
+	CHECK(rec->get<sample::keyed_label>() == std::string{"us"});
+
+	REQUIRE(rec->unknown().size() == 1);
+	CHECK(rec->unknown()[0] == unknown_field<universal_key>{.id = unknown_key, .value = make_bytes({0xAA, 0xBB})});
+
+	// Encoding writes the definition order with the definition keys, then the unknown items
+	auto expected = byte_vector{};
+	append_item(expected, sample::keyed_label::key, make_bytes({'u', 's'}));
+	append_item(expected, sample::shared_count::key, make_bytes({0x07}));
+	append_item(expected, sample::keyed_angle::key, make_bytes({0x80, 0x01}));
+	append_item(expected, unknown_key, make_bytes({0xAA, 0xBB}));
+	CHECK(encode_set(*rec) == expected);
+
+	SECTION("describe gives the key of each item") {
+		auto const text = describe(*rec);
+		REQUIRE(text.size() == 4);
+		CHECK(text[0].id == item_id{sample::keyed_label::key});
+		CHECK(text[0].name == "Keyed Label");
+		CHECK(text[2].units == "deg");
+		CHECK(text[3].id == item_id{unknown_key});
+		CHECK(text[3].name == "Unknown key 06 0E 2B 34 01 01 01 01 0E 01 7F 01 7F 00 00 00");
+		CHECK(text[3].value == std::string{"AA BB"});
+		CHECK(to_string(item_id{uint32_t{48}}) == "tag 48");
+	}
+
+	SECTION("keep_unknown = false drops unknown items") {
+		auto const without = decode_set<sample::keyed_us>(data, {.keep_unknown = false});
+		REQUIRE(without);
+		CHECK(without->unknown().empty());
+	}
+}
+
+TEST_CASE("KLV universal set errors", "[klv]") {
+	SECTION("a truncated key fails the set") {
+		auto const data = make_bytes({0x06, 0x0E, 0x2B, 0x34, 0x01});
+		auto const rec = decode_set<sample::keyed_us>(data);
+		REQUIRE_FALSE(rec);
+		CHECK(rec.error().code == error_code::unexpected_end_of_data);
+		CHECK(rec.error().message.starts_with("Keyed: "));
+	}
+
+	SECTION("an encode failure names the key") {
+		auto rec = record<sample::keyed_us>{};
+		rec.set<sample::keyed_label>("longer than eight");
+		auto const bytes = encode_set(rec);
+		REQUIRE_FALSE(bytes);
+		CHECK(
+		    bytes.error().message.find("'Keyed Label' (key 06 0E 2B 34 01 01 01 01 0E 01 7F 01 02 00 00 00)")
+		    != std::string::npos
+		);
+	}
+}
+
+TEST_CASE("KLV universal set inside a local set field", "[klv]") {
+	auto keyed = record<sample::keyed_us>{};
+	keyed.set<sample::shared_count>(3);
+	keyed.set<sample::keyed_label>("in");
+
+	auto rec = record<sample::mixed_ls>{};
+	rec.set<sample::shared_count>(9);
+	rec.set<sample::keyed_holder>(keyed);
+
+	auto inner = byte_vector{};
+	append_item(inner, sample::keyed_label::key, make_bytes({'i', 'n'}));
+	append_item(inner, sample::shared_count::key, make_bytes({0x03}));
+
+	auto expected = byte_vector{};
+	append_field(expected, 7, make_bytes({0x09}));
+	append_field(expected, 8, inner);
+
+	auto const bytes = encode_set(rec);
+	REQUIRE(bytes);
+	CHECK(*bytes == expected);
+
+	auto const decoded = decode_set<sample::mixed_ls>(*bytes);
+	REQUIRE(decoded);
+	CHECK(*decoded == rec);
+
+	auto const text = describe(*decoded);
+	REQUIRE(text.size() == 3);
+	CHECK(text[0].id == item_id{uint32_t{7}});
+	CHECK(text[1].name == "Holder.Keyed Label");
+	CHECK(text[1].id == item_id{sample::keyed_label::key});
+	CHECK(text[2].name == "Holder.Shared Count");
+
+	// copy_fields copies the shared field from one kind of set to the other
+	auto local = record<sample::mixed_ls>{};
+	copy_fields(keyed, local);
+	CHECK(local.get<sample::shared_count>() == uint8_t{3});
+	CHECK_FALSE(local.has<sample::keyed_holder>());
 }

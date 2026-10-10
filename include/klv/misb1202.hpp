@@ -120,7 +120,7 @@ struct document_version {
 struct transformation_type {
 	static constexpr uint32_t tag = 11;
 	static constexpr std::string_view name = "Transformation Type";
-	static constexpr codec::enumeration<transformation_kind> format{.name_of = &to_string};
+	static constexpr codec::enumeration<transformation_kind> format{};
 };
 
 /// MISB ST 1202 Generalized Transformation Local Set

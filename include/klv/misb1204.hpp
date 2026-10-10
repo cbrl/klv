@@ -8,12 +8,10 @@
  * - A Minor Core Identifier: one ID that a system downstream of the platform inserts.
  *
  * Each ID is a 16-byte UUID. MISB ST 0601 tag 94 and MISB ST 0903 tag 13 hold a Core Identifier. A Core Identifier
- * can also be a standalone KLV item with the key `core_id_key`:
+ * can also be a standalone KLV item (`core_id_item`):
  * @code
- * for (auto const& packet : klv::split_packets(bytes)) {
- *     if (packet && klv::key_matches(klv::misb1204::core_id_key, packet->key)) {
- *         auto const id = klv::misb1204::core_id_codec{}.decode(packet->value);
- *     }
+ * if (auto const id = klv::decode_packet<klv::misb1204::core_id_item>(bytes)) {
+ *     use(id->value);
  * }
  * @endcode
  */
@@ -36,9 +34,6 @@
 #include <utility>
 
 namespace klv::misb1204 {
-
-/// Key of a standalone Core Identifier KLV item
-inline constexpr universal_key core_id_key = ul("06 0E 2B 34 01 01 01 01 0E 01 04 05 03 00 00 00");
 
 /// Kind of a Sensor ID or a Platform ID (ST 1204 Table 3)
 enum class id_type : uint8_t {
@@ -336,6 +331,13 @@ struct core_id_codec {
 		detail::append_groups(text, check);
 		return text;
 	}
+};
+
+/// Standalone Core Identifier KLV item
+struct core_id_item {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 04 05 03 00 00 00");
+	static constexpr std::string_view name = "Core Identifier";
+	static constexpr core_id_codec format{};
 };
 
 /**

@@ -3,7 +3,7 @@
 klv is a header-only C++23 library that decodes and encodes KLV (SMPTE 336)
 metadata. It includes definitions for MISB ST 0601 (UAS Datalink Local Set) and
 these other MISB standards:
-- ST 0102 (Security)
+- ST 0102 (Security Local Set and Universal Set)
 - ST 0603 (MISP Time System and Timestamps)
 - ST 0806 (Remote Video Terminal)
 - ST 0809 (Meteorological Metadata)
@@ -51,6 +51,10 @@ checksum, and continues at the next universal label after a malformed packet. A
 field can have no value. Its `field_error` gives the reason, for example
 `absent`, `empty` (length of zero), `error_indicator`, or `bad_length`.
 
+`decode_packets` also accepts universal sets, such as the ST 0102 Security
+Universal Set, and standalone items, such as
+`misb0603::precision_time_stamp_item`.
+
 A set can hold some fields more than once, for example the ST 0601 Segment
 Local Set. Such a field has a list value with one item for each occurrence, and
 `record::add` appends an item.
@@ -75,7 +79,7 @@ auto const bytes = klv::encode_packet(uas);  // result<byte_vector>
 The encoder writes the fields in definition order and adds the checksum as the
 last field. Each set uses the checksum of its standard. ST 0601 and ST 0903 use
 a 16-bit sum, ST 1002, ST 1107, ST 1108, ST 1504, and ST 1507 use CRC-16-CCITT,
-and ST 0806 uses CRC-32/MPEG-2. ST 0809 and ST 1301 have no checksum.
+and ST 0806 uses CRC-32/MPEG-2. ST 0102, ST 0809, and ST 1301 have no checksum.
 
 A set inside another set has no checksum, as ST 0903.6 and ST 1002.3 require.
 The checksum of the parent packet covers the nested bytes. The decoder keeps a
@@ -83,10 +87,10 @@ nested checksum value that a producer sends anyway, but does not verify it.
 
 ## Defining fields and sets
 
-All metadata is static. Each field is a struct with a tag, a name, optional
-units, and a constexpr codec object. Each set is a list of fields. The compiler
-builds the tag dispatch table and a typed record for each set, and rejects
-duplicate tags and access to a field that is not in the set.
+All metadata is static. Each field is a struct with a tag or a key, a name,
+optional units, and a constexpr codec object. Each set is a list of fields. The
+compiler builds the dispatch table and a typed record for each set, and rejects
+duplicate tags or keys and access to a field that is not in the set.
 
 ```cpp
 struct platform_heading_angle {
@@ -114,6 +118,7 @@ The built-in base codecs are:
 - `imapb` (MISB ST 1201)
 - `imapb_value` (MISB ST 1201, with the byte length in the value)
 - `string`
+- `utf16_string` (UTF-16 text, RFC 2781)
 - `timestamp`
 - `nano_timestamp`
 - `ieee754`

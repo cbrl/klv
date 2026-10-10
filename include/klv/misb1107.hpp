@@ -389,7 +389,7 @@ struct pixel_size_y {
 struct slant_range_pedigree {
 	static constexpr uint32_t tag = 38;
 	static constexpr std::string_view name = "Slant Range Pedigree";
-	static constexpr codec::enumeration<range_pedigree> format{.name_of = &to_string};
+	static constexpr codec::enumeration<range_pedigree> format{};
 };
 
 /// Line of the slant range point in the image

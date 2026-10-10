@@ -320,7 +320,7 @@ struct state_vector_pack {
 struct anomaly_type {
 	static constexpr uint32_t tag = 5;
 	static constexpr std::string_view name = "Anomaly Type";
-	static constexpr codec::enumeration<anomaly_kind> format{.name_of = &to_string};
+	static constexpr codec::enumeration<anomaly_kind> format{};
 };
 
 /// Time at which the Mean Anomaly at Epoch is valid

@@ -177,7 +177,7 @@ struct positioning_method_source {
 struct platform_status {
 	static constexpr uint32_t tag = 125;
 	static constexpr std::string_view name = "Platform Status";
-	static constexpr codec::enumeration<platform_state> format{.name_of = &to_string};
+	static constexpr codec::enumeration<platform_state> format{};
 };
 
 struct airbase_locations {

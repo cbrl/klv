@@ -1,6 +1,6 @@
 /**
  * @file klv/set/record.hpp
- * @brief Typed records that hold the field values of one local set
+ * @brief Typed records that hold the field values of one set
  *
  * `record<S>` has one typed slot for each field of `S`. `record<S>::get<E>()` does not compile when `E` is not a field
  * of `S`.
@@ -22,9 +22,10 @@
 
 namespace klv {
 
-/// A field whose tag the set definition does not contain
+/// An item whose id the set definition does not contain. `Id` is `uint32_t` (a tag) or `universal_key`.
+template<typename Id>
 struct unknown_field {
-	uint32_t tag = 0;
+	Id id{};
 	byte_vector value;
 
 	friend auto operator==(unknown_field const&, unknown_field const&) -> bool = default;
@@ -64,19 +65,20 @@ struct record_access {
 }  // namespace detail
 
 /**
- * @brief Decoded (or to be encoded) contents of one local set
+ * @brief Decoded (or to be encoded) contents of one set
  *
  * Each field of `S` has a slot of type `field<value_t<E>>`. A slot without a value holds the reason:
  * - `absent`: the set did not contain the field.
  * - `empty`: the field had a length of zero.
  * - a decode error, such as `error_indicator` or `bad_length`.
  */
-template<local_set_definition S>
+template<set_definition S>
 class record {
-	static_assert(detail::list_info<typename S::fields>::unique_tags);
+	static_assert(detail::set_info<S>::unique_ids);
 
 public:
 	using definition = S;
+	using unknown_type = unknown_field<item_id_t<S>>;
 
 	/// The value of field `E`, or the reason that it has no value
 	template<member_of<S> E>
@@ -135,13 +137,13 @@ public:
 		slot<E>().value = std::unexpected(field_error::absent);
 	}
 
-	/// Fields with tags that `S` does not define, in decode order. Encoding writes them after the known fields.
+	/// Items with ids that `S` does not define, in decode order. Encoding writes them after the known fields.
 	[[nodiscard]]
-	auto unknown() const noexcept -> std::span<unknown_field const> {
+	auto unknown() const noexcept -> std::span<unknown_type const> {
 		return unknown_;
 	}
 
-	auto add_unknown(unknown_field field) -> void {
+	auto add_unknown(unknown_type field) -> void {
 		unknown_.push_back(std::move(field));
 	}
 
@@ -161,18 +163,35 @@ private:
 	}
 
 	detail::field_slots<typename S::fields> slots_;
-	std::vector<unknown_field> unknown_;
+	std::vector<unknown_type> unknown_;
 };
 
 /**
  * @brief Call `visitor(std::type_identity<E>{}, record.get<E>())` for each field `E` of `S`, in definition order
  */
-template<local_set_definition S, typename F>
+template<set_definition S, typename F>
 auto for_each_field(record<S> const& rec, F&& visitor) -> void {
 	[&]<typename... E>(field_list<E...>) {
 		auto const& slots = detail::record_access::slots(rec);
 		(visitor(std::type_identity<E>{}, static_cast<detail::field_slot<E> const&>(slots).value), ...);
 	}(typename S::fields{});
+}
+
+/**
+ * @brief Copy each field of `from` that is not absent into `to`
+ *
+ * A value replaces the value in `to`. An empty field makes the field in `to` empty. The function ignores a field that
+ * the set `To` does not define, and the unknown items of `from`.
+ */
+template<set_definition From, set_definition To>
+auto copy_fields(record<From> const& from, record<To>& to) -> void {
+	for_each_field(from, [&]<typename E>(std::type_identity<E>, field<value_t<E>> const& value) {
+		if constexpr (member_of<E, To>) {
+			if (value || value.error() != field_error::absent) {
+				to.template assign<E>(value);
+			}
+		}
+	});
 }
 
 namespace detail {

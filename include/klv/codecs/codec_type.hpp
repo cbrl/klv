@@ -30,6 +30,7 @@
 #include <span>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace klv {
@@ -72,5 +73,14 @@ concept covering_codec = codec_type<C> && requires(C const& codec, byte_span in,
 	requires std::same_as<decltype(codec.decode(in, std::span<uint32_t const>{})), field<typename C::value_type>>;
 	{ codec.covered_tags(value) } -> std::same_as<std::span<uint32_t const>>;
 };
+
+/// Encode one value with `codec`. The result holds only the value bytes, without a tag, a key, or a length.
+template<codec_type C>
+[[nodiscard]]
+auto encode_value(C const& codec, typename C::value_type const& value) -> field<byte_vector> {
+	auto out = byte_vector{};
+	auto writer = byte_writer{out};
+	return codec.encode(value, writer).transform([&] { return std::move(out); });
+}
 
 }  // namespace klv

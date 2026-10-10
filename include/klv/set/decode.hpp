@@ -1,8 +1,8 @@
 /**
  * @file klv/set/decode.hpp
- * @brief Local set decoding
+ * @brief Set decoding
  *
- * The compiler builds the tag dispatch table of each set from `S::fields`.
+ * The compiler builds the dispatch table of each set from `S::fields` (see `klv/set/coding.hpp`).
  */
 
 #pragma once
@@ -12,6 +12,7 @@
 #include "klv/codecs/codec_type.hpp"
 #include "klv/error.hpp"
 #include "klv/field.hpp"
+#include "klv/set/coding.hpp"
 #include "klv/set/definition.hpp"
 #include "klv/set/record.hpp"
 
@@ -29,7 +30,7 @@ namespace klv {
 /// Decode settings
 struct decode_options {
 	bool verify_checksum = true;  ///< Packet decoding: verify the checksum of a set that names a checksum field
-	bool keep_unknown = true;  ///< Keep fields with unknown tags in `record::unknown()`
+	bool keep_unknown = true;  ///< Keep items with unknown ids in `record::unknown()`
 };
 
 namespace detail {
@@ -48,7 +49,7 @@ auto decode_occurrence(C const& codec, byte_span bytes, std::span<uint32_t const
 }
 
 /// Decode one occurrence of field `E`. Each field of each set instantiates this function. Thus, it stays small.
-template<local_set_definition S, typename E>
+template<set_definition S, typename E>
 auto decode_into(record<S>& rec, byte_span bytes, std::span<uint32_t const> preceding) -> void {
 	auto& value = static_cast<field_slot<E>&>(record_access::slots(rec)).value;
 
@@ -84,55 +85,39 @@ auto decode_into(record<S>& rec, byte_span bytes, std::span<uint32_t const> prec
 	}
 }
 
-template<local_set_definition S, typename List = typename S::fields>
-struct set_table;
+template<set_definition S, typename List = typename S::fields>
+struct set_decoders;
 
-template<local_set_definition S, typename... F>
-struct set_table<S, field_list<F...>> {
-	using info = list_info<field_list<F...>>;
+template<set_definition S, typename... F>
+struct set_decoders<S, field_list<F...>> {
 	using decode_function = auto (*)(record<S>&, byte_span, std::span<uint32_t const>) -> void;
 
-	static constexpr auto count = info::count;
-	static constexpr auto max_tag = info::max_tag;
-	static constexpr auto decoders = std::array<decode_function, count>{&decode_into<S, F>...};
+	static constexpr auto functions = std::array<decode_function, sizeof...(F)>{&decode_into<S, F>...};
 
-	/// Tag to field index, or -1
-	static constexpr auto index = [] {
-		auto table = std::array<int16_t, size_t{max_tag} + 1>{};
-		table.fill(-1);
-		for (auto i = size_t{0}; i < count; ++i) {
-			table[info::tags[i]] = static_cast<int16_t>(i);
-		}
-		return table;
-	}();
-
-	/// Typed decoder for `tag`, or null when the set does not define the tag
+	/// Typed decoder for `id`, or null when the set does not define the id
 	[[nodiscard]]
-	static constexpr auto find(uint32_t tag) noexcept -> decode_function {
-		if (tag > max_tag || index[tag] < 0) {
-			return nullptr;
-		}
-		return decoders[static_cast<size_t>(index[tag])];
+	static constexpr auto find(item_id_t<S> const& id) noexcept -> decode_function {
+		auto const index = field_index<S>(id);
+		return index == no_field ? nullptr : functions[index];
 	}
 };
 
-/// The last field of a decoded set, for checksum verification
+/// The last item of a decoded set, for checksum verification
+template<typename Id>
 struct last_field_info {
 	bool present = false;
-	uint32_t tag = 0;
-	byte_span value;  ///< Value bytes of the field, inside the decoded buffer
+	Id id{};
+	byte_span value;  ///< Value bytes of the item, inside the decoded buffer
 };
 
-template<local_set_definition S>
+template<set_definition S>
 [[nodiscard]]
 auto decode_fields(
 	byte_span value,
 	size_t base_offset,
 	decode_options const& options,
-	last_field_info* last
+	last_field_info<item_id_t<S>>* last
 ) -> result<record<S>> {
-	using table = set_table<S>;
-
 	auto const fail = [](error problem) {
 		problem.message = std::format("{}: {}", S::name, problem.message);
 		return std::unexpected(std::move(problem));
@@ -145,9 +130,9 @@ auto decode_fields(
 	auto history = std::vector<uint32_t>{};
 
 	while (!reader.empty()) {
-		auto const tag = reader.read_ber_oid();
-		if (!tag) {
-			return fail(tag.error());
+		auto const id = read_id<S>(reader);
+		if (!id) {
+			return fail(id.error());
 		}
 
 		auto const length = reader.read_ber_length();
@@ -160,19 +145,19 @@ auto decode_fields(
 			return fail(bytes.error());
 		}
 
-		if (auto const decode = table::find(*tag); decode != nullptr) {
+		if (auto const decode = set_decoders<S>::find(*id); decode != nullptr) {
 			decode(rec, *bytes, history);
 		}
 		else if (options.keep_unknown) {
-			rec.add_unknown(unknown_field{.tag = *tag, .value = byte_vector(bytes->begin(), bytes->end())});
+			rec.add_unknown({.id = *id, .value = byte_vector(bytes->begin(), bytes->end())});
 		}
 
 		if constexpr (has_covering_field<S>) {
-			history.push_back(*tag);
+			history.push_back(*id);
 		}
 
 		if (last != nullptr) {
-			*last = last_field_info{.present = true, .tag = *tag, .value = *bytes};
+			*last = last_field_info<item_id_t<S>>{.present = true, .id = *id, .value = *bytes};
 		}
 	}
 
@@ -182,13 +167,14 @@ auto decode_fields(
 }  // namespace detail
 
 /**
- * @brief Decode the value bytes of a local set
+ * @brief Decode the value bytes of a set
  *
- * A malformed tag, length, or field size fails the whole set. A field value that its codec rejects (for example a
+ * A malformed tag, key, length, or field size fails the whole set. A field value that its codec rejects (for example a
  * wrong length or the error value) only marks that field. A field with a length of zero is `field_error::empty`, for
- * each format. A field of a covering codec (for example an SDCC-FLP) gets the tags of the items before it.
+ * each format. A field of a covering codec (for example an SDCC-FLP) gets the tags of the items before it. A key in a
+ * universal set can have any version byte.
  */
-template<local_set_definition S>
+template<set_definition S>
 [[nodiscard]]
 auto decode_set(byte_span value, decode_options const& options = {}) -> result<record<S>> {
 	return detail::decode_fields<S>(value, 0, options, nullptr);

@@ -95,7 +95,7 @@ struct generic_flag_data {
 struct sensor_field_of_view_name {
 	static constexpr uint32_t tag = 63;
 	static constexpr std::string_view name = "Sensor Field of View Name";
-	static constexpr codec::enumeration<field_of_view_name> format{.name_of = &to_string};
+	static constexpr codec::enumeration<field_of_view_name> format{};
 };
 
 struct sensor_ellipsoid_height {
@@ -169,7 +169,7 @@ struct active_wavelength_list {
 struct sensor_control_mode {
 	static constexpr uint32_t tag = 126;
 	static constexpr std::string_view name = "Sensor Control Mode";
-	static constexpr codec::enumeration<control_mode> format{.name_of = &to_string};
+	static constexpr codec::enumeration<control_mode> format{};
 };
 
 struct sensor_frame_rate_pack {

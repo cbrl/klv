@@ -55,7 +55,7 @@ struct aoi_corner_longitude_point_3 {
 struct aoi_type {
 	static constexpr uint32_t tag = 6;
 	static constexpr std::string_view name = "AOI Type";
-	static constexpr codec::enumeration<interest_type> format{.name_of = &to_string};
+	static constexpr codec::enumeration<interest_type> format{};
 };
 
 struct aoi_text {

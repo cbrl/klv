@@ -10,10 +10,8 @@
  * The Time Status byte gives the state of the clock that makes a time stamp. Each of the three items can be a
  * standalone KLV item with its own key:
  * @code
- * for (auto const& packet : klv::split_packets(bytes)) {
- *     if (packet && klv::key_matches(klv::misb0603::nano_precision_time_stamp_key, packet->key)) {
- *         auto const time = klv::codec::nano_timestamp{}.decode(packet->value);
- *     }
+ * if (auto const time = klv::decode_packet<klv::misb0603::nano_precision_time_stamp_item>(bytes)) {
+ *     use(time->value);
  * }
  * @endcode
  */
@@ -35,15 +33,6 @@
 #include <string_view>
 
 namespace klv::misb0603 {
-
-/// Key of a standalone Precision Time Stamp item (SMPTE RP 210)
-inline constexpr universal_key precision_time_stamp_key = ul("06 0E 2B 34 01 01 01 03 07 02 01 01 01 05 00 00");
-
-/// Key of a standalone Nano Precision Time Stamp item (MISB ST 0807)
-inline constexpr universal_key nano_precision_time_stamp_key = ul("06 0E 2B 34 01 01 01 01 0E 01 01 02 0A 08 00 00");
-
-/// Key of a standalone Time Status item (MISB ST 0807)
-inline constexpr universal_key time_status_key = ul("06 0E 2B 34 01 01 01 01 0E 01 01 03 10 00 00 00");
 
 /**
  * @brief Precision Time Stamp of a Nano Precision Time Stamp (ST 0603 section 7.3)
@@ -156,6 +145,27 @@ struct time_status_codec {
 	auto to_string(time_status const& value) const -> std::string {
 		return std::format("{{locked: {}, jump: {}}}", value.locked, misb0603::to_string(value.jump));
 	}
+};
+
+/// Standalone Precision Time Stamp item (SMPTE RP 210)
+struct precision_time_stamp_item {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 03 07 02 01 01 01 05 00 00");
+	static constexpr std::string_view name = "Precision Time Stamp";
+	static constexpr codec::timestamp format{};
+};
+
+/// Standalone Nano Precision Time Stamp item (MISB ST 0807)
+struct nano_precision_time_stamp_item {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 01 02 0A 08 00 00");
+	static constexpr std::string_view name = "Nano Precision Time Stamp";
+	static constexpr codec::nano_timestamp format{};
+};
+
+/// Standalone Time Status item (MISB ST 0807)
+struct time_status_item {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 01 03 10 00 00 00");
+	static constexpr std::string_view name = "Time Status";
+	static constexpr time_status_codec format{};
 };
 
 }  // namespace klv::misb0603

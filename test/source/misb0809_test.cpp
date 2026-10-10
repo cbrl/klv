@@ -109,14 +109,6 @@ auto make_weather() -> record<met::meteorological_ls> {
 	return rec;
 }
 
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
-
 }  // namespace
 
 TEST_CASE("KLV ST 0809 Meteorological set packet", "[klv][misb0809]") {
@@ -169,8 +161,8 @@ TEST_CASE("KLV ST 0809 Fog Presence", "[klv][misb0809]") {
 	CHECK(format.decode(hex("02")) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(hex("00 01")) == std::unexpected(field_error::bad_length));
 
-	CHECK(encode(format, met::fog::present) == hex("01"));
-	CHECK(encode(format, met::fog{2}) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(format, met::fog::present) == hex("01"));
+	CHECK(encode_value(format, met::fog{2}) == std::unexpected(field_error::invalid_value));
 	CHECK(format.to_string(met::fog::absent) == "Absent");
 }
 
@@ -188,6 +180,6 @@ TEST_CASE("KLV ST 0809 item lengths", "[klv][misb0809]") {
 
 	// A text item holds at most 40 bytes
 	auto const longest = std::string(40, 'x');
-	CHECK(encode(met::reporting_id::format, longest).has_value());
-	CHECK(encode(met::reporting_id::format, longest + "x") == std::unexpected(field_error::bad_length));
+	CHECK(encode_value(met::reporting_id::format, longest).has_value());
+	CHECK(encode_value(met::reporting_id::format, longest + "x") == std::unexpected(field_error::bad_length));
 }

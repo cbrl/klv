@@ -15,7 +15,7 @@ using klv_test::micros;
 
 namespace rvt = klv::misb0806;
 
-static_assert(universal_set_definition<rvt::rvt_ls> && has_checksum<rvt::rvt_ls>);
+static_assert(keyed_set_definition<rvt::rvt_ls> && has_checksum<rvt::rvt_ls>);
 
 TEST_CASE("KLV ST 0806 RVT set decodes and re-encodes an example", "[klv][misb0806]") {
 	auto const bytes = hex(

@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 namespace klv::misb0102 {
@@ -149,6 +151,95 @@ constexpr auto to_string(object_country_coding value) -> std::string_view {
 			return "GENC AdminSub";
 	}
 	return {};
+}
+
+// Universal Set text (ST 0102 Table 1 and section 6.8)
+
+/// Universal Set text of a classification, for example "UNCLASSIFIED//", or an empty view
+[[nodiscard]]
+constexpr auto universal_text(classification value) -> std::string_view {
+	switch (value) {
+		case classification::unclassified:
+			return "UNCLASSIFIED//";
+		case classification::restricted:
+			return "RESTRICTED//";
+		case classification::confidential:
+			return "CONFIDENTIAL//";
+		case classification::secret:
+			return "SECRET//";
+		case classification::top_secret:
+			return "TOP SECRET//";
+	}
+	return {};
+}
+
+/// Universal Set text of a coding method, or an empty view. An "Omitted Value" has no Universal Set text.
+[[nodiscard]]
+constexpr auto universal_text(classifying_country_coding value) -> std::string_view {
+	auto const text = to_string(value);
+	return text == "Omitted Value" ? std::string_view{} : text;
+}
+
+/// Universal Set text of a coding method, or an empty view. An "Omitted Value" has no Universal Set text.
+[[nodiscard]]
+constexpr auto universal_text(object_country_coding value) -> std::string_view {
+	auto const text = to_string(value);
+	return text == "Omitted Value" ? std::string_view{} : text;
+}
+
+namespace detail {
+
+/// True when the two texts are equal. The comparison ignores the case of ASCII letters.
+[[nodiscard]]
+constexpr auto equal_ignoring_case(std::string_view first, std::string_view second) noexcept -> bool {
+	auto const lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
+	if (first.size() != second.size()) {
+		return false;
+	}
+	for (auto i = size_t{0}; i < first.size(); ++i) {
+		if (lower(first[i]) != lower(second[i])) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/// The value of `Enum` whose Universal Set text is `text`
+template<typename Enum>
+[[nodiscard]]
+constexpr auto parse_universal_text(std::string_view text) -> std::optional<Enum> {
+	for (auto i = 0U; i <= 0xFFU; ++i) {
+		auto const value = static_cast<Enum>(i);
+		if (auto const name = universal_text(value); !name.empty() && equal_ignoring_case(name, text)) {
+			return value;
+		}
+	}
+	return std::nullopt;
+}
+
+}  // namespace detail
+
+/**
+ * @brief The classification of a Universal Set text, for example "SECRET//"
+ *
+ * The comparison ignores the case of ASCII letters. ST 0102 section 6.8 gives upper-case text, but Table 1 gives the
+ * coding methods in mixed case.
+ */
+[[nodiscard]]
+constexpr auto parse_classification(std::string_view text) -> std::optional<classification> {
+	return detail::parse_universal_text<classification>(text);
+}
+
+/// The coding method of a Universal Set text, for example "GENC Two Letter". The comparison ignores the case.
+[[nodiscard]]
+constexpr auto parse_classifying_country_coding(std::string_view text) -> std::optional<classifying_country_coding> {
+	return detail::parse_universal_text<classifying_country_coding>(text);
+}
+
+/// The coding method of a Universal Set text, for example "GENC AdminSub". The comparison ignores the case.
+[[nodiscard]]
+constexpr auto parse_object_country_coding(std::string_view text) -> std::optional<object_country_coding> {
+	return detail::parse_universal_text<object_country_coding>(text);
 }
 
 }  // namespace klv::misb0102

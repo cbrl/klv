@@ -355,7 +355,7 @@ struct metric_ls {
 struct assessment_point {
 	static constexpr uint32_t tag = 1;
 	static constexpr std::string_view name = "Assessment Point";
-	static constexpr codec::enumeration<assessment_location> format{.name_of = &to_string};
+	static constexpr codec::enumeration<assessment_location> format{};
 };
 
 struct metric_period_pack {
@@ -380,13 +380,13 @@ struct metric_local_set {
 struct compression_type {
 	static constexpr uint32_t tag = 5;
 	static constexpr std::string_view name = "Compression Type";
-	static constexpr codec::enumeration<compression_method> format{.name_of = &to_string};
+	static constexpr codec::enumeration<compression_method> format{};
 };
 
 struct compression_profile {
 	static constexpr uint32_t tag = 6;
 	static constexpr std::string_view name = "Compression Profile";
-	static constexpr codec::enumeration<compression_profile_kind> format{.name_of = &to_string};
+	static constexpr codec::enumeration<compression_profile_kind> format{};
 };
 
 /// Level of the compression, for example "4.1" or "5" (H.264 and H.265) or "HL" (H.262). "N/A" when uncompressed.

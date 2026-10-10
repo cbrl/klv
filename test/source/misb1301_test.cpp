@@ -97,8 +97,8 @@ TEST_CASE("KLV ST 1301 keeps the augmentation items", "[klv][misb1301]") {
 	CHECK(decoded->get<aug::document_version>() == uint32_t{2});
 	CHECK(decoded->get<aug::core_identifier>() == table_7_id());
 	REQUIRE(decoded->unknown().size() == 2);
-	CHECK(decoded->unknown()[0] == unknown_field{.tag = 8, .value = hex("AB CD")});
-	CHECK(decoded->unknown()[1] == unknown_field{.tag = 1, .value = hex("00 01 02")});
+	CHECK(decoded->unknown()[0] == unknown_field<uint32_t>{.id = 8, .value = hex("AB CD")});
+	CHECK(decoded->unknown()[1] == unknown_field<uint32_t>{.id = 1, .value = hex("00 01 02")});
 
 	// Encoding writes the fields in tag order, then the unknown items in their decoded order
 	CHECK(

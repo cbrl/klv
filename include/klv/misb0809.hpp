@@ -259,7 +259,7 @@ struct total_illumination_direct {
 struct fog_presence {
 	static constexpr uint32_t tag = 29;
 	static constexpr std::string_view name = "Fog Presence";
-	static constexpr codec::enumeration<fog> format{.name_of = &to_string};
+	static constexpr codec::enumeration<fog> format{};
 };
 
 struct fog_thickness {

@@ -81,7 +81,7 @@ struct rvt_local_set {
 struct operational_mode {
 	static constexpr uint32_t tag = 77;
 	static constexpr std::string_view name = "Operational Mode";
-	static constexpr codec::enumeration<operation_type> format{.name_of = &to_string};
+	static constexpr codec::enumeration<operation_type> format{};
 };
 
 /// MISB ST 1204 Motion Imagery Identification System core identifier

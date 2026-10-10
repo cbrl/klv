@@ -129,14 +129,6 @@ auto tags_of(byte_span value) -> std::vector<uint32_t> {
 	return tags;
 }
 
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
-
 }  // namespace
 
 TEST_CASE("KLV ST 1504 State Vector Local Set packet", "[klv][misb1504]") {
@@ -219,7 +211,7 @@ TEST_CASE("KLV ST 1504 SDCC-FLP covers the packs directly before it", "[klv][mis
 	auto twelve = six_rows({});
 	twelve.size = 12;
 	twelve.sigma.insert(twelve.sigma.end(), {7.0, 8.0, 9.0, 10.0, 11.0, 12.0});
-	auto const twelve_bytes = encode(sv::sdcc_flp::format, twelve);
+	auto const twelve_bytes = encode_value(sv::sdcc_flp::format, twelve);
 	REQUIRE(twelve_bytes);
 	CHECK(sv::sdcc_flp::format.decode(*twelve_bytes, one_pack) == std::unexpected(field_error::invalid_value));
 }
@@ -239,16 +231,16 @@ TEST_CASE("KLV ST 1504 State Vector Pack", "[klv][misb1504]") {
 	};
 
 	CHECK(format.decode(pack("11")) == value);
-	CHECK(encode(format, value) == pack("11"));
+	CHECK(encode_value(format, value) == pack("11"));
 
 	// Each element uses 8 bytes when one element needs 8 bytes
 	auto precise = value;
 	precise.elements[5] = 0.1;
-	auto const bytes = encode(format, precise);
+	auto const bytes = encode_value(format, precise);
 	REQUIRE(bytes);
 	CHECK(bytes->size() == 49);
 	CHECK(format.decode(*bytes) == precise);
-	CHECK(encode(sv::state_vector_codec{.length = 8}, value)->size() == 49);
+	CHECK(encode_value(sv::state_vector_codec{.length = 8}, value)->size() == 49);
 
 	// A later version can add bytes to the State Vector Status. Decoding ignores them.
 	auto experimental = value;
@@ -261,7 +253,7 @@ TEST_CASE("KLV ST 1504 State Vector Pack", "[klv][misb1504]") {
 	CHECK(format.decode(pack("13")) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(hex("91")) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(pack("11 00")) == std::unexpected(field_error::bad_length));
-	CHECK(encode(format, sv::state_vector{.frame = sv::reference_frame{4}, .kind = {}, .elements = {}})
+	CHECK(encode_value(format, sv::state_vector{.frame = sv::reference_frame{4}, .kind = {}, .elements = {}})
 	      == std::unexpected(field_error::invalid_value));
 }
 
@@ -269,7 +261,7 @@ TEST_CASE("KLV ST 1504 vector packs and scalar items", "[klv][misb1504]") {
 	constexpr auto format = sv::node_vector_pack::format;
 	auto const unit = std::array{0.5, -0.25, 1.0};
 
-	CHECK(encode(format, unit) == hex("3F 00 00 00 BE 80 00 00 3F 80 00 00"));
+	CHECK(encode_value(format, unit) == hex("3F 00 00 00 BE 80 00 00 3F 80 00 00"));
 	CHECK(format.decode(hex("3F 00 00 00 BE 80 00 00 3F 80 00 00")) == unit);
 	CHECK(
 	    format.decode(hex("3F E0 00 00 00 00 00 00 BF D0 00 00 00 00 00 00 3F F0 00 00 00 00 00 00")) == unit

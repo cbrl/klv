@@ -1,6 +1,6 @@
 /**
  * @file klv/set/encode.hpp
- * @brief Local set encoding
+ * @brief Set encoding
  */
 
 #pragma once
@@ -10,6 +10,7 @@
 #include "klv/codecs/codec_type.hpp"
 #include "klv/error.hpp"
 #include "klv/field.hpp"
+#include "klv/set/coding.hpp"
 #include "klv/set/definition.hpp"
 #include "klv/set/record.hpp"
 
@@ -28,7 +29,7 @@ namespace klv {
 
 namespace detail {
 
-template<local_set_definition S, typename E>
+template<set_definition S, typename E>
 [[nodiscard]]
 constexpr auto is_checksum_field() noexcept -> bool {
 	if constexpr (has_checksum<S>) {
@@ -39,12 +40,12 @@ constexpr auto is_checksum_field() noexcept -> bool {
 	}
 }
 
-/// Write the tag of `E` and the value that `write_value` writes, with its length
-template<field_descriptor E, typename F>
+/// Write the id of `E` and the value that `write_value` writes, with its length
+template<set_definition S, field_descriptor E, typename F>
 [[nodiscard]]
 auto encode_occurrence(byte_writer& out, F&& write_value) -> result<void> {
 	auto const start = out.size();
-	out.put_ber_oid(E::tag);
+	put_id<S>(out, id_of<S, E>());
 
 	auto const status = out.put_length_prefixed(std::forward<F>(write_value));
 	if (!status) {
@@ -53,9 +54,9 @@ auto encode_occurrence(byte_writer& out, F&& write_value) -> result<void> {
 		    error_code::invalid_value,
 		    start,
 		    std::format(
-		        "Cannot encode field '{}' (tag {}): {}",
+		        "Cannot encode field '{}' ({}): {}",
 		        E::name,
-		        static_cast<uint32_t>(E::tag),
+		        klv::to_string(item_id{id_of<S, E>()}),
 		        klv::to_string(status.error())
 		    )
 		);
@@ -64,12 +65,12 @@ auto encode_occurrence(byte_writer& out, F&& write_value) -> result<void> {
 }
 
 /// Write one field. A repeated field writes one occurrence for each item.
-template<field_descriptor E>
+template<set_definition S, field_descriptor E>
 [[nodiscard]]
 auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<void> {
 	// An empty field has a length of zero
 	if (!value && value.error() == field_error::empty) {
-		return encode_occurrence<E>(out, []() -> encode_result { return {}; });
+		return encode_occurrence<S, E>(out, []() -> encode_result { return {}; });
 	}
 
 	// An absent field, or a field that did not decode, has nothing to write
@@ -79,12 +80,12 @@ auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<vo
 
 	if constexpr (repeated_codec<codec_of<E>>) {
 		if (!value) {
-			return encode_occurrence<E>(out, []() -> encode_result {
+			return encode_occurrence<S, E>(out, []() -> encode_result {
 				return std::unexpected(field_error::invalid_value);
 			});
 		}
 		for (auto const& item : *value) {
-			auto status = encode_occurrence<E>(out, [&] { return E::format.item.encode(item, out); });
+			auto status = encode_occurrence<S, E>(out, [&] { return E::format.item.encode(item, out); });
 			if (!status) {
 				return status;
 			}
@@ -92,7 +93,7 @@ auto encode_field(field<value_t<E>> const& value, byte_writer& out) -> result<vo
 		return {};
 	}
 	else {
-		return encode_occurrence<E>(out, [&]() -> encode_result {
+		return encode_occurrence<S, E>(out, [&]() -> encode_result {
 			if (value) {
 				return E::format.encode(*value, out);
 			}
@@ -117,8 +118,9 @@ struct covered_items {
 	}
 };
 
-inline auto put_unknown(unknown_field const& unknown, byte_writer& out) -> void {
-	out.put_ber_oid(unknown.tag);
+template<set_definition S>
+auto put_unknown(unknown_field<item_id_t<S>> const& unknown, byte_writer& out) -> void {
+	put_id<S>(out, unknown.id);
 	out.put_ber_length(unknown.value.size());
 	out.put_bytes(unknown.value);
 }
@@ -188,7 +190,7 @@ auto encode_covered(record<S> const& rec, std::span<uint32_t const> tags, covere
 			}
 			found = true;
 			if constexpr (!covering_field<E> && !is_checksum_field<S, E>()) {
-				status = encode_field<E>(static_cast<field_slot<E> const&>(slots).value, out);
+				status = encode_field<S, E>(static_cast<field_slot<E> const&>(slots).value, out);
 			}
 			return true;
 		};
@@ -199,8 +201,8 @@ auto encode_covered(record<S> const& rec, std::span<uint32_t const> tags, covere
 
 		auto const unknown = rec.unknown();
 		for (auto i = size_t{0}; !found && i < unknown.size(); ++i) {
-			if (unknown[i].tag == tag && !covered.unknown_written[i]) {
-				put_unknown(unknown[i], out);
+			if (unknown[i].id == tag && !covered.unknown_written[i]) {
+				put_unknown<S>(unknown[i], out);
 				covered.unknown_written[i] = true;
 				found = true;
 			}
@@ -226,14 +228,14 @@ template<local_set_definition S, typename E>
 auto encode_covering(record<S> const& rec, covered_items& covered, byte_writer& out) -> result<void> {
 	auto const& value = static_cast<field_slot<E> const&>(record_access::slots(rec)).value;
 	if (!value) {
-		return encode_field<E>(value, out);
+		return encode_field<S, E>(value, out);
 	}
 
 	if constexpr (repeated_codec<codec_of<E>>) {
 		for (auto const& item : *value) {
 			auto status = encode_covered(rec, E::format.item.covered_tags(item), covered, out);
 			if (status) {
-				status = encode_occurrence<E>(out, [&] { return E::format.item.encode(item, out); });
+				status = encode_occurrence<S, E>(out, [&] { return E::format.item.encode(item, out); });
 			}
 			if (!status) {
 				return status;
@@ -243,7 +245,7 @@ auto encode_covering(record<S> const& rec, covered_items& covered, byte_writer& 
 	}
 	else {
 		auto status = encode_covered(rec, E::format.covered_tags(*value), covered, out);
-		return status ? encode_field<E>(value, out) : status;
+		return status ? encode_field<S, E>(value, out) : status;
 	}
 }
 
@@ -253,7 +255,7 @@ auto encode_covering(record<S> const& rec, covered_items& covered, byte_writer& 
  * A covering item (for example an SDCC-FLP) comes directly after the items that it covers. The checksum field is not
  * written.
  */
-template<local_set_definition S>
+template<set_definition S>
 [[nodiscard]]
 auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
 	auto status = result<void>{};
@@ -277,10 +279,12 @@ auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
 		}
 		else {
 			// A covering item writes its covered fields before itself
-			if (has_covering_field<S> && covered.holds(E::tag)) {
-				return true;
+			if constexpr (has_covering_field<S>) {
+				if (covered.holds(E::tag)) {
+					return true;
+				}
 			}
-			status = encode_field<E>(static_cast<field_slot<E> const&>(slots).value, out);
+			status = encode_field<S, E>(static_cast<field_slot<E> const&>(slots).value, out);
 			return status.has_value();
 		}
 	};
@@ -296,7 +300,7 @@ auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
 	auto const unknown = rec.unknown();
 	for (auto i = size_t{0}; i < unknown.size(); ++i) {
 		if (covered.unknown_written.empty() || !covered.unknown_written[i]) {
-			put_unknown(unknown[i], out);
+			put_unknown<S>(unknown[i], out);
 		}
 	}
 	return {};
@@ -305,7 +309,7 @@ auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
 }  // namespace detail
 
 /**
- * @brief Append the value bytes of a local set to `out`
+ * @brief Append the value bytes of a set to `out`
  *
  * The function writes the fields in definition order, then the unknown fields. It skips absent fields and fields that
  * did not decode. An empty field gets a length of zero. A covering item (for example an SDCC-FLP) comes directly
@@ -313,7 +317,7 @@ auto encode_fields(record<S> const& rec, byte_writer& out) -> result<void> {
  *
  * The function does not write a checksum field (see `encode_packet`). On failure, `out` keeps its old size.
  */
-template<local_set_definition S>
+template<set_definition S>
 [[nodiscard]]
 auto encode_set(record<S> const& rec, byte_vector& out) -> result<void> {
 	auto writer = byte_writer{out};
@@ -326,8 +330,8 @@ auto encode_set(record<S> const& rec, byte_vector& out) -> result<void> {
 	return status;
 }
 
-/// Encode the value bytes of a local set
-template<local_set_definition S>
+/// Encode the value bytes of a set
+template<set_definition S>
 [[nodiscard]]
 auto encode_set(record<S> const& rec) -> result<byte_vector> {
 	auto out = byte_vector{};

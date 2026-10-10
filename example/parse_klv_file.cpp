@@ -18,10 +18,10 @@ auto print_record(klv::record<kv::uas_datalink_ls> const& uas) -> void {
 	std::println("{}", kv::uas_datalink_ls::name);
 	for (auto const& field : klv::describe(uas)) {
 		if (field.value) {
-			std::println("  [{}] {}: {} {}", field.tag, field.name, *field.value, field.units);
+			std::println("  [{}] {}: {} {}", klv::to_string(field.id), field.name, *field.value, field.units);
 		}
 		else {
-			std::println("  [{}] {}: <{}>", field.tag, field.name, klv::to_string(field.value.error()));
+			std::println("  [{}] {}: <{}>", klv::to_string(field.id), field.name, klv::to_string(field.value.error()));
 		}
 	}
 }

@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "klv_test_util.hpp"
 #include "klv/misb1204.hpp"
@@ -97,13 +96,6 @@ constexpr auto examples = std::array{
     },
 };
 
-[[nodiscard]]
-auto encode(miis::core_id const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return format.encode(value, writer).transform([&] { return out; });
-}
-
 /// A UUID from the 32 hex digits of its text
 [[nodiscard]]
 auto uuid_of(std::string_view text) -> klv::uuid {
@@ -121,19 +113,11 @@ TEST_CASE("KLV ST 1204 examples decode, encode, and convert to text", "[klv][mis
 		INFO(item.text);
 		auto const bytes = hex(item.klv);
 
-		auto packets = std::vector<raw_packet>{};
-		for (auto const& packet : split_packets(bytes)) {
-			REQUIRE(packet);
-			packets.push_back(*packet);
-		}
-		REQUIRE(packets.size() == 1);
-		CHECK(key_matches(miis::core_id_key, packets.front().key));
-
-		auto const value = format.decode(packets.front().value);
-		REQUIRE(value);
-		CHECK(format.to_string(*value) == item.text);
-		CHECK(miis::parse_core_id(item.text) == *value);
-		CHECK(encode(*value) == byte_vector(packets.front().value.begin(), packets.front().value.end()));
+		auto const decoded = decode_packet<miis::core_id_item>(bytes);
+		REQUIRE(decoded);
+		CHECK(format.to_string(decoded->value) == item.text);
+		CHECK(miis::parse_core_id(item.text) == decoded->value);
+		CHECK(encode_packet(*decoded) == bytes);
 	}
 }
 
@@ -194,13 +178,16 @@ TEST_CASE("KLV ST 1204 encoding needs a valid Core Identifier", "[klv][misb1204]
 	auto const id = uuid_of("F592F02373364AF8AA9162C00F2EB2DA");
 	auto const sensor = miis::device_id{.type = miis::id_type::physical, .id = id};
 
-	CHECK(encode(miis::core_id{}) == std::unexpected(field_error::invalid_value));
-	CHECK(encode(miis::core_id{.sensor = sensor, .minor = id}) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(format, miis::core_id{}) == std::unexpected(field_error::invalid_value));
 	CHECK(
-	    encode(miis::core_id{.sensor = miis::device_id{.type = miis::id_type{0}, .id = id}})
+	    encode_value(format, miis::core_id{.sensor = sensor, .minor = id})
 	    == std::unexpected(field_error::invalid_value)
 	);
-	CHECK(encode(miis::core_id{.window = id}) == hex("0104" "F592F02373364AF8AA9162C00F2EB2DA"));
+	CHECK(
+	    encode_value(format, miis::core_id{.sensor = miis::device_id{.type = miis::id_type{0}, .id = id}})
+	    == std::unexpected(field_error::invalid_value)
+	);
+	CHECK(encode_value(format, miis::core_id{.window = id}) == hex("0104" "F592F02373364AF8AA9162C00F2EB2DA"));
 }
 
 TEST_CASE("KLV ST 1204 text format", "[klv][misb1204]") {

@@ -75,6 +75,24 @@ constexpr auto key_matches(universal_key const& expected, byte_span actual) noex
 	return true;
 }
 
+/**
+ * @brief Order two universal keys byte by byte, without the version byte (index 7)
+ *
+ * Two keys that `key_matches` accepts are equal in this order. A sorted list of keys can thus find a key with any
+ * version byte.
+ */
+[[nodiscard]]
+constexpr auto key_less(universal_key const& first, universal_key const& second) noexcept -> bool {
+	constexpr auto version_index = size_t{7};
+
+	for (auto i = size_t{0}; i < first.size(); ++i) {
+		if (i != version_index && first[i] != second[i]) {
+			return first[i] < second[i];
+		}
+	}
+	return false;
+}
+
 /// The first four bytes of every SMPTE universal label. The packet splitter uses them to resynchronize.
 inline constexpr auto universal_label_prefix = std::array{
 	std::byte{0x06},

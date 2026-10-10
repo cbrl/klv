@@ -44,7 +44,7 @@ struct poi_altitude {
 struct poi_type {
 	static constexpr uint32_t tag = 5;
 	static constexpr std::string_view name = "POI Type";
-	static constexpr codec::enumeration<interest_type> format{.name_of = &to_string};
+	static constexpr codec::enumeration<interest_type> format{};
 };
 
 struct poi_text {

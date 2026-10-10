@@ -4,12 +4,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <format>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 #include "klv_test_util.hpp"
 #include "klv/misb0601.hpp"
+#include "klv/misb0603.hpp"
+#include "klv/misb1204.hpp"
 #include "klv/packet.hpp"
 
 using namespace klv;
@@ -37,7 +41,30 @@ struct other_ls {
 	using fields = field_list<value>;
 };
 
+struct keyed_value {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 03 7F 01 00 00 00");
+	static constexpr std::string_view name = "Keyed Value";
+	static constexpr codec::integer<uint16_t> format{};
+};
+
+struct keyed_checksum {
+	static constexpr universal_key key = ul("06 0E 2B 34 01 01 01 01 0E 01 03 7F 02 00 00 00");
+	static constexpr std::string_view name = "Keyed Checksum";
+	static constexpr codec::integer<uint16_t> format{};
+};
+
+/// A universal set (byte 6 of the key is 01) with a CRC-16-CCITT checksum
+struct keyed_us {
+	static constexpr std::string_view name = "Keyed";
+	static constexpr universal_key key = ul("06 0E 2B 34 02 01 01 01 0E 01 03 7F 00 00 00 00");
+	using fields = field_list<keyed_value, keyed_checksum>;
+	using checksum_field = keyed_checksum;
+	static constexpr auto checksum_function = crc16_ccitt;
+};
+
 }  // namespace other
+
+static_assert(universal_set_definition<other::keyed_us> && has_checksum<other::keyed_us>);
 
 namespace {
 
@@ -283,4 +310,176 @@ TEST_CASE("KLV decode_packets reports a set decode error and continues", "[klv]"
 
 	CHECK(ok == 1);
 	CHECK(errors == 1);
+}
+
+namespace {
+
+/// Universal set packet with a Keyed Value of 0x1234 and a CRC-16-CCITT checksum
+[[nodiscard]]
+auto keyed_packet(universal_key checksum_key = other::keyed_checksum::key) -> byte_vector {
+	auto value = byte_vector{};
+	append_packet(value, other::keyed_value::key, make_bytes({0x12, 0x34}));
+	append_packet(value, checksum_key, make_bytes({0x00, 0x00}));
+
+	auto bytes = byte_vector{};
+	append_packet(bytes, other::keyed_us::key, value);
+	auto const crc = crc16_ccitt(byte_span{bytes}.first(bytes.size() - 2));
+	bytes[bytes.size() - 2] = static_cast<std::byte>(crc >> 8U);
+	bytes[bytes.size() - 1] = static_cast<std::byte>(crc & 0xFFU);
+	return bytes;
+}
+
+}  // namespace
+
+TEST_CASE("KLV universal set packet with a checksum", "[klv]") {
+	auto rec = record<other::keyed_us>{};
+	rec.set<other::keyed_value>(0x1234);
+	CHECK(encode_packet(rec) == keyed_packet());
+
+	auto const decoded = decode_packet<other::keyed_us>(keyed_packet());
+	REQUIRE(decoded);
+	CHECK(decoded->get<other::keyed_value>() == uint16_t{0x1234});
+	CHECK(decoded->unknown().empty());
+
+	SECTION("a checksum key with another version byte is the checksum field") {
+		auto checksum_key = other::keyed_checksum::key;
+		checksum_key[7] = std::byte{0x0E};
+		CHECK(decode_packet<other::keyed_us>(keyed_packet(checksum_key)));
+	}
+
+	SECTION("a changed byte fails verification") {
+		auto bytes = keyed_packet();
+		bytes[35] ^= std::byte{0x01};  // the low byte of the Keyed Value
+		auto const changed = decode_packet<other::keyed_us>(bytes);
+		REQUIRE_FALSE(changed);
+		CHECK(changed.error().code == error_code::checksum_mismatch);
+	}
+
+	SECTION("a packet without the checksum item fails verification") {
+		auto value = byte_vector{};
+		append_packet(value, other::keyed_value::key, make_bytes({0x12, 0x34}));
+		auto bytes = byte_vector{};
+		append_packet(bytes, other::keyed_us::key, value);
+
+		auto const missing = decode_packet<other::keyed_us>(bytes);
+		REQUIRE_FALSE(missing);
+		CHECK(missing.error().code == error_code::missing_checksum);
+	}
+}
+
+TEST_CASE("KLV decode_packets mixes local set and universal set packets", "[klv]") {
+	auto other_record = record<other::other_ls>{};
+	other_record.set<other::value>(5);
+
+	auto buffer = encode_sample();
+	auto const keyed = keyed_packet();
+	buffer.insert(buffer.end(), keyed.begin(), keyed.end());
+	REQUIRE(encode_packet(other_record, buffer));
+
+	auto results = std::vector<result<packet<kv::uas_datalink_ls, other::keyed_us, other::other_ls>>>{};
+	for (auto&& item : decode_packets<kv::uas_datalink_ls, other::keyed_us, other::other_ls>(buffer)) {
+		results.push_back(std::move(item));
+	}
+
+	REQUIRE(results.size() == 3);
+	REQUIRE(results[0]);
+	CHECK(std::holds_alternative<uas_record>(*results[0]));
+	REQUIRE(results[1]);
+	auto const* universal = std::get_if<record<other::keyed_us>>(&*results[1]);
+	REQUIRE(universal != nullptr);
+	CHECK(universal->get<other::keyed_value>() == uint16_t{0x1234});
+	REQUIRE(results[2]);
+	CHECK(std::get_if<record<other::other_ls>>(&*results[2]) != nullptr);
+}
+
+namespace {
+
+using precision_item = item<misb0603::precision_time_stamp_item>;
+
+/// Core Identifier of MISB ST 1204 Table 7: a physical Sensor ID and a virtual Platform ID
+constexpr auto core_id_value = std::string_view{
+    "01 70 F5 92 F0 23 73 36 4A F8 AA 91 62 C0 0F 2E B2 DA 16 B7 43 41 00 08 41 A0 BE 36 5B 5A B9 6A 36 45"
+};
+
+}  // namespace
+
+static_assert(item_definition<misb1204::core_id_item> && packet_definition<misb1204::core_id_item>);
+static_assert(!item_definition<kv::uas_datalink_ls> && packet_definition<kv::uas_datalink_ls>);
+static_assert(!item_definition<kv::mission_id> && !packet_definition<kv::mission_id>);
+
+TEST_CASE("KLV decode_packets mixes sets and standalone items", "[klv]") {
+	auto buffer = encode_sample();
+	append_packet(buffer, misb1204::core_id_item::key, klv_test::hex(core_id_value));
+	REQUIRE(encode_packet(precision_item{sample_time}, buffer));
+
+	auto unknown_key = misb1204::core_id_item::key;
+	unknown_key[12] = std::byte{0x7E};
+	append_packet(buffer, unknown_key, make_bytes({0x01}));
+
+	// A Precision Time Stamp item with 7 bytes does not decode
+	auto const bad_offset = buffer.size();
+	append_packet(buffer, misb0603::precision_time_stamp_item::key, make_bytes({0, 1, 2, 3, 4, 5, 6}));
+
+	using packets = packet<kv::uas_datalink_ls, misb1204::core_id_item, precision_item::definition>;
+	auto results = std::vector<result<packets>>{};
+	for (auto&& one : decode_packets<kv::uas_datalink_ls, misb1204::core_id_item, precision_item::definition>(buffer)) {
+		results.push_back(std::move(one));
+	}
+
+	REQUIRE(results.size() == 5);
+	REQUIRE(results[0]);
+	CHECK(std::holds_alternative<uas_record>(*results[0]));
+
+	REQUIRE(results[1]);
+	auto const* core = std::get_if<item<misb1204::core_id_item>>(&*results[1]);
+	REQUIRE(core != nullptr);
+	CHECK(
+	    misb1204::core_id_item::format.to_string(core->value)
+	    == "0170:F592-F023-7336-4AF8-AA91-62C0-0F2E-B2DA/16B7-4341-0008-41A0-BE36-5B5A-B96A-3645:D3"
+	);
+
+	REQUIRE(results[2]);
+	CHECK(std::get<precision_item>(*results[2]).value == sample_time);
+
+	REQUIRE(results[3]);
+	CHECK(std::get<unknown_packet>(*results[3]).key == unknown_key);
+
+	REQUIRE_FALSE(results[4]);
+	CHECK(results[4].error().code == error_code::invalid_value);
+	CHECK(results[4].error().offset == bad_offset);
+	CHECK(results[4].error().message == std::format("Precision Time Stamp at offset {}: bad length", bad_offset));
+}
+
+TEST_CASE("KLV standalone item decoding and encoding", "[klv]") {
+	auto const bytes = encode_packet(precision_item{sample_time});
+	REQUIRE(bytes);
+	auto expected = byte_vector{};
+	append_packet(expected, misb0603::precision_time_stamp_item::key, klv_test::hex("00 04 59 F4 A6 AA 4A A8"));
+	CHECK(*bytes == expected);
+	CHECK(decode_packet<misb0603::precision_time_stamp_item>(*bytes) == precision_item{sample_time});
+
+	SECTION("an empty item is an error") {
+		auto empty = byte_vector{};
+		append_packet(empty, misb0603::precision_time_stamp_item::key, {});
+		auto const decoded = decode_packet<misb0603::precision_time_stamp_item>(empty);
+		REQUIRE_FALSE(decoded);
+		CHECK(decoded.error().code == error_code::invalid_value);
+		CHECK(decoded.error().message == "Precision Time Stamp at offset 0: empty");
+	}
+
+	SECTION("another key is an error") {
+		auto const decoded = decode_packet<misb1204::core_id_item>(*bytes);
+		REQUIRE_FALSE(decoded);
+		CHECK(decoded.error().code == error_code::unknown_key);
+	}
+
+	SECTION("a value that does not encode keeps the buffer") {
+		auto out = make_bytes({0xEE});
+		auto const bad = item<misb0603::time_status_item>{{.locked = true, .jump = misb0603::time_jump{3}}};
+		auto const status = encode_packet(bad, out);
+		REQUIRE_FALSE(status);
+		CHECK(status.error().code == error_code::invalid_value);
+		CHECK(status.error().message == "Cannot encode item 'Time Status': invalid value");
+		CHECK(out == make_bytes({0xEE}));
+	}
 }

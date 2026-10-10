@@ -22,14 +22,6 @@ using klv_test::make_bytes;
 
 namespace {
 
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
-
 constexpr auto heading = codec::mapped<uint16_t>{0.0, 360.0};
 constexpr auto pitch = codec::mapped<int16_t>{-20.0, 20.0, codec::sentinel::reserve_min};
 constexpr auto latitude = codec::mapped<int32_t>{-90.0, 90.0, codec::sentinel::reserve_min};
@@ -65,7 +57,7 @@ TEST_CASE("KLV integer codec accepts short encodings", "[klv]") {
 	CHECK(u16.decode({}) == std::unexpected(field_error::bad_length));
 	CHECK(i8.decode(make_bytes({0xFF})) == std::int8_t{-1});
 
-	CHECK(encode(u16, 0x12) == make_bytes({0x00, 0x12}));
+	CHECK(encode_value(u16, 0x12) == make_bytes({0x00, 0x12}));
 	CHECK(u16.to_string(42) == "42");
 	CHECK(codec::integer<uint8_t>{}.to_string(200) == "200");
 }
@@ -102,13 +94,13 @@ TEST_CASE("KLV mapped codec checks the value length", "[klv]") {
 
 TEST_CASE("KLV mapped codec rounds to the nearest raw value", "[klv]") {
 	// 45.5 * 65535 / 360 = 8282.85, so the nearest raw value is 8283 (0x205B). Truncation gives 8282.
-	CHECK(encode(heading, 45.5) == make_bytes({0x20, 0x5B}));
-	CHECK(encode(pitch, 0.0) == make_bytes({0x00, 0x00}));
-	CHECK(encode(pitch, -20.0) == make_bytes({0x80, 0x01}));
-	CHECK(encode(latitude, 90.0) == make_bytes({0x7F, 0xFF, 0xFF, 0xFF}));
+	CHECK(encode_value(heading, 45.5) == make_bytes({0x20, 0x5B}));
+	CHECK(encode_value(pitch, 0.0) == make_bytes({0x00, 0x00}));
+	CHECK(encode_value(pitch, -20.0) == make_bytes({0x80, 0x01}));
+	CHECK(encode_value(latitude, 90.0) == make_bytes({0x7F, 0xFF, 0xFF, 0xFF}));
 
 	for (auto const value : {0.0, 0.001, 45.5, 123.456, 180.0, 359.99, 360.0}) {
-		auto const bytes = encode(heading, value);
+		auto const bytes = encode_value(heading, value);
 		REQUIRE(bytes);
 		CHECK(heading.decode(*bytes).value() == Approx(value).margin(360.0 / 65'535.0 / 2.0 + 1e-12));
 	}
@@ -117,11 +109,11 @@ TEST_CASE("KLV mapped codec rounds to the nearest raw value", "[klv]") {
 TEST_CASE("KLV mapped codec writes the error value for NaN and out-of-range values", "[klv]") {
 	auto const nan = std::numeric_limits<double>::quiet_NaN();
 
-	CHECK(encode(pitch, nan) == make_bytes({0x80, 0x00}));
-	CHECK(encode(pitch, 25.0) == make_bytes({0x80, 0x00}));
-	CHECK(encode(heading, nan) == std::unexpected(field_error::invalid_value));
-	CHECK(encode(heading, 361.0) == std::unexpected(field_error::out_of_range));
-	CHECK(encode(heading, -0.5) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(pitch, nan) == make_bytes({0x80, 0x00}));
+	CHECK(encode_value(pitch, 25.0) == make_bytes({0x80, 0x00}));
+	CHECK(encode_value(heading, nan) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(heading, 361.0) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(heading, -0.5) == std::unexpected(field_error::out_of_range));
 
 	auto out = byte_vector{};
 	auto writer = byte_writer{out};
@@ -135,7 +127,7 @@ TEST_CASE("KLV timestamp codec", "[klv]") {
 	constexpr auto micros = int64_t{1'224'807'209'913'000};
 	auto const value = timestamp{std::chrono::microseconds{micros}};
 
-	auto const bytes = encode(format, value);
+	auto const bytes = encode_value(format, value);
 	REQUIRE(bytes);
 	CHECK(bytes->size() == 8);
 	CHECK(format.decode(*bytes) == value);
@@ -143,7 +135,7 @@ TEST_CASE("KLV timestamp codec", "[klv]") {
 
 	CHECK(format.decode(make_bytes({0x00, 0x01})) == std::unexpected(field_error::bad_length));
 	CHECK(format.decode(make_bytes({0x80, 0, 0, 0, 0, 0, 0, 0})) == std::unexpected(field_error::out_of_range));
-	CHECK(encode(format, timestamp{std::chrono::microseconds{-1}}) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(format, timestamp{std::chrono::microseconds{-1}}) == std::unexpected(field_error::out_of_range));
 }
 
 TEST_CASE("KLV string codec", "[klv]") {
@@ -151,28 +143,110 @@ TEST_CASE("KLV string codec", "[klv]") {
 
 	CHECK(format.decode(make_bytes({'H', 'i', 0, 0})) == std::string{"Hi"});
 	CHECK(format.decode({}) == std::string{});
-	CHECK(encode(format, "Test") == make_bytes({'T', 'e', 's', 't'}));
-	CHECK(encode(format, "Tests") == std::unexpected(field_error::bad_length));
+	CHECK(encode_value(format, "Test") == make_bytes({'T', 'e', 's', 't'}));
+	CHECK(encode_value(format, "Tests") == std::unexpected(field_error::bad_length));
+}
+
+TEST_CASE("KLV UTF-16 string codec", "[klv]") {
+	constexpr auto format = codec::utf16_string{};
+	constexpr auto invalid = std::unexpected(field_error::invalid_value);
+
+	// "H", U+00E9, and U+1F600 (a surrogate pair). Without a byte order mark, the byte order is big-endian.
+	auto const text = std::string{"H\xC3\xA9\xF0\x9F\x98\x80"};
+	auto const big_endian = make_bytes({0x00, 'H', 0x00, 0xE9, 0xD8, 0x3D, 0xDE, 0x00});
+	CHECK(format.decode(big_endian) == text);
+	CHECK(encode_value(format, text) == big_endian);
+	CHECK(format.to_string(text) == text);
+
+	// A byte order mark selects the byte order
+	CHECK(format.decode(make_bytes({0xFE, 0xFF, 0x00, 'U', 0x00, 'S'})) == std::string{"US"});
+	CHECK(format.decode(make_bytes({0xFF, 0xFE, 'U', 0x00, 'S', 0x00})) == std::string{"US"});
+	CHECK(format.decode(make_bytes({0xFF, 0xFE, 0x3D, 0xD8, 0x00, 0xDE})) == std::string{"\xF0\x9F\x98\x80"});
+
+	// Decoding removes trailing U+0000 characters
+	CHECK(format.decode(make_bytes({0x00, 'U', 0x00, 'S', 0x00, 0x00})) == std::string{"US"});
+	CHECK(format.decode({}) == std::string{});
+
+	// Without legacy_8bit, 8-bit text decodes as UTF-16: "US" is U+5553
+	CHECK(format.decode(make_bytes({'U', 'S'})) == std::string{"\xE5\x95\x93"});
+
+	SECTION("errors") {
+		CHECK(format.decode(make_bytes({0x00, 'U', 0x00})) == invalid);
+		CHECK(format.decode(make_bytes({0xD8, 0x3D})) == invalid);
+		CHECK(format.decode(make_bytes({0xD8, 0x3D, 0x00, 'A'})) == invalid);
+		CHECK(format.decode(make_bytes({0xDE, 0x00, 0x00, 'A'})) == invalid);
+
+		CHECK(encode_value(format, std::string{"\xC3"}) == invalid);
+		CHECK(encode_value(format, std::string{"\x80"}) == invalid);
+		CHECK(encode_value(format, std::string{"\xC0\x80"}) == invalid);
+		CHECK(encode_value(format, std::string{"\xED\xA0\x80"}) == invalid);
+		CHECK(encode_value(format, std::string{"\xF4\x90\x80\x80"}) == invalid);
+		CHECK(encode_value(format, std::string{"\xF8\x88\x80\x80\x80"}) == invalid);
+	}
+
+	SECTION("legacy 8-bit text") {
+		constexpr auto lenient = codec::utf16_string{.legacy_8bit = true};
+		CHECK(lenient.decode(make_bytes({'U', 'S'})) == std::string{"US"});
+		CHECK(lenient.decode(make_bytes({'G', 'B', 'R'})) == std::string{"GBR"});
+		CHECK(lenient.decode(make_bytes({'U', 'S', 0x00, 0x00})) == std::string{"US"});
+		CHECK(lenient.decode(make_bytes({0x00, 'U', 0x00, 'S'})) == std::string{"US"});
+		CHECK(lenient.decode(make_bytes({0xFE, 0xFF, 0x00, 'U'})) == std::string{"U"});
+		CHECK(lenient.decode(make_bytes({0xFF, 0xFE, 'U', 0x00})) == std::string{"U"});
+		CHECK(encode_value(lenient, "US") == make_bytes({0x00, 'U', 0x00, 'S'}));
+	}
 }
 
 TEST_CASE("KLV IEEE 754 codec", "[klv]") {
 	constexpr auto f32 = codec::ieee754<float>{};
 	constexpr auto f64 = codec::ieee754<double>{};
 
-	CHECK(encode(f32, 1.0F) == make_bytes({0x3F, 0x80, 0x00, 0x00}));
+	CHECK(encode_value(f32, 1.0F) == make_bytes({0x3F, 0x80, 0x00, 0x00}));
 	CHECK(f32.decode(make_bytes({0x3F, 0x80, 0x00, 0x00})) == 1.0F);
 	CHECK(f64.decode(make_bytes({0x3F, 0xF0, 0, 0, 0, 0, 0, 0})) == 1.0);
 	CHECK(f64.decode(make_bytes({0x3F, 0x80, 0x00, 0x00})) == std::unexpected(field_error::bad_length));
 }
 
+namespace {
+
+/// An enumeration without a `to_string` function
+enum class plain_enum : uint8_t {
+	one = 1,
+};
+
+[[nodiscard]]
+constexpr auto short_name(misb0102::classification value) -> std::string_view {
+	return value == misb0102::classification::secret ? "S" : "";
+}
+
+}  // namespace
+
+static_assert(detail::named_enumeration<misb0102::classification>);
+static_assert(!detail::named_enumeration<plain_enum>);
+
 TEST_CASE("KLV enumeration codec rejects undefined values", "[klv]") {
-	constexpr auto format = misb0102::security_classification::format;
+	// The codec uses the to_string function of the misb0102 namespace
+	constexpr auto format = codec::enumeration<misb0102::classification>{};
+	constexpr auto invalid = std::unexpected(field_error::invalid_value);
 
 	CHECK(format.decode(make_bytes({0x04})) == misb0102::classification::secret);
-	CHECK(format.decode(make_bytes({0x09})) == std::unexpected(field_error::invalid_value));
+	CHECK(format.decode(make_bytes({0x09})) == invalid);
 	CHECK(format.decode(make_bytes({0x00, 0x01})) == std::unexpected(field_error::bad_length));
 	CHECK(format.to_string(misb0102::classification::top_secret) == "TOP SECRET");
-	CHECK(encode(format, static_cast<misb0102::classification>(0x09)) == std::unexpected(field_error::invalid_value));
+	CHECK(format.to_string(static_cast<misb0102::classification>(0x09)) == "9");
+	CHECK(encode_value(format, static_cast<misb0102::classification>(0x09)) == invalid);
+
+	SECTION("name_of replaces the to_string function") {
+		constexpr auto short_names = codec::enumeration<misb0102::classification>{.name_of = &short_name};
+		CHECK(short_names.to_string(misb0102::classification::secret) == "S");
+		CHECK(short_names.decode(make_bytes({0x01})) == invalid);
+	}
+
+	SECTION("an enumeration without a name function accepts each value") {
+		constexpr auto plain = codec::enumeration<plain_enum>{};
+		CHECK(plain.decode(make_bytes({0x09})) == static_cast<plain_enum>(9));
+		CHECK(plain.to_string(plain_enum::one) == "1");
+		CHECK(plain.name(plain_enum::one).empty());
+	}
 }
 
 TEST_CASE("KLV bytes codec keeps the bytes", "[klv]") {
@@ -180,7 +254,7 @@ TEST_CASE("KLV bytes codec keeps the bytes", "[klv]") {
 	auto const data = make_bytes({0xAB, 0xCD});
 
 	CHECK(format.decode(data) == data);
-	CHECK(encode(format, data) == data);
+	CHECK(encode_value(format, data) == data);
 	CHECK(format.to_string(data) == "AB CD");
 }
 
@@ -188,10 +262,10 @@ TEST_CASE("KLV IMAPB codec maps with the ST 1201 equations", "[klv]") {
 	// b - a = 40900, so bPow = 16. With 3 bytes, dPow = 23, sF = 128, and sR = 1/128.
 	constexpr auto altitude = codec::imapb{-900.0, 40'000.0, 3};
 
-	CHECK(encode(altitude, -900.0) == make_bytes({0x00, 0x00, 0x00}));
-	CHECK(encode(altitude, 0.0) == make_bytes({0x01, 0xC2, 0x00}));
-	CHECK(encode(altitude, 10.5) == make_bytes({0x01, 0xC7, 0x40}));
-	CHECK(encode(altitude, 40'000.0) == make_bytes({0x4F, 0xE2, 0x00}));
+	CHECK(encode_value(altitude, -900.0) == make_bytes({0x00, 0x00, 0x00}));
+	CHECK(encode_value(altitude, 0.0) == make_bytes({0x01, 0xC2, 0x00}));
+	CHECK(encode_value(altitude, 10.5) == make_bytes({0x01, 0xC7, 0x40}));
+	CHECK(encode_value(altitude, 40'000.0) == make_bytes({0x4F, 0xE2, 0x00}));
 
 	CHECK(altitude.decode(make_bytes({0x00, 0x00, 0x00})) == -900.0);
 	CHECK(altitude.decode(make_bytes({0x01, 0xC2, 0x00})) == 0.0);
@@ -207,7 +281,7 @@ TEST_CASE("KLV IMAPB codec decodes each length from 1 to 8 bytes", "[klv]") {
 
 	for (auto length = size_t{1}; length <= codec::imapb::max_length; ++length) {
 		auto const format = codec::imapb{-900.0, 40'000.0, length};
-		auto const bytes = encode(format, 1'234.5);
+		auto const bytes = encode_value(format, 1'234.5);
 		REQUIRE(bytes);
 		CHECK(bytes->size() == length);
 
@@ -224,7 +298,7 @@ TEST_CASE("KLV IMAPB codec maps zero exactly when min is negative", "[klv]") {
 	// sF * min = -19.2 is not an integer, so zOffset = 0.8 moves zero to the raw value 20
 	constexpr auto format = codec::imapb{-0.3, 1.0, 1};
 
-	CHECK(encode(format, 0.0) == make_bytes({0x14}));
+	CHECK(encode_value(format, 0.0) == make_bytes({0x14}));
 	CHECK(format.decode(make_bytes({0x14})) == 0.0);
 }
 
@@ -232,7 +306,7 @@ TEST_CASE("KLV IMAPB codec maps max of a power-of-two range to the flag bit alon
 	// max - min = 256 is a power of two, so max maps to 0x8000. With no other bit set, that is a normal value.
 	constexpr auto format = codec::imapb{0.0, 256.0, 2};
 
-	CHECK(encode(format, 256.0) == make_bytes({0x80, 0x00}));
+	CHECK(encode_value(format, 256.0) == make_bytes({0x80, 0x00}));
 	CHECK(format.decode(make_bytes({0x80, 0x00})) == 256.0);
 	CHECK(format.decode(make_bytes({0x7F, 0xFF})) == 255.9921875);
 }
@@ -241,7 +315,7 @@ TEST_CASE("KLV IMAPB codec applies the zero offset only to a range that contains
 	// sF = 64 and sF * min = -12.8. The range does not contain zero, so zOffset = 0 and min maps to raw 0.
 	constexpr auto format = codec::imapb{-0.2, -0.1, 1};
 
-	CHECK(encode(format, -0.2) == make_bytes({0x00}));
+	CHECK(encode_value(format, -0.2) == make_bytes({0x00}));
 	CHECK(format.decode(make_bytes({0x00})) == -0.2);
 }
 
@@ -250,12 +324,12 @@ TEST_CASE("KLV IMAPB codec special values and range checks", "[klv]") {
 	auto const nan = std::numeric_limits<double>::quiet_NaN();
 	auto const infinity = std::numeric_limits<double>::infinity();
 
-	CHECK(encode(altitude, nan) == make_bytes({0xD0, 0x00, 0x00}));
-	CHECK(encode(altitude, std::copysign(nan, -1.0)) == make_bytes({0xF0, 0x00, 0x00}));
-	CHECK(encode(altitude, infinity) == make_bytes({0xC8, 0x00, 0x00}));
-	CHECK(encode(altitude, -infinity) == make_bytes({0xE8, 0x00, 0x00}));
-	CHECK(encode(altitude, -900.5) == make_bytes({0xE0, 0x00, 0x00}));
-	CHECK(encode(altitude, 40'000.5) == make_bytes({0xE1, 0x00, 0x00}));
+	CHECK(encode_value(altitude, nan) == make_bytes({0xD0, 0x00, 0x00}));
+	CHECK(encode_value(altitude, std::copysign(nan, -1.0)) == make_bytes({0xF0, 0x00, 0x00}));
+	CHECK(encode_value(altitude, infinity) == make_bytes({0xC8, 0x00, 0x00}));
+	CHECK(encode_value(altitude, -infinity) == make_bytes({0xE8, 0x00, 0x00}));
+	CHECK(encode_value(altitude, -900.5) == make_bytes({0xE0, 0x00, 0x00}));
+	CHECK(encode_value(altitude, 40'000.5) == make_bytes({0xE1, 0x00, 0x00}));
 
 	auto out = byte_vector{};
 	auto writer = byte_writer{out};
@@ -284,18 +358,18 @@ TEST_CASE("KLV IMAPB value codec keeps the byte length", "[klv]") {
 	// One step is 2^-5 with 2 bytes. With 1 byte, one step is 2^3 and the zero offset is 0.5.
 	auto const two = offset.decode(make_bytes({0x44, 0x00}));
 	CHECK(two == imapb_value{.value = 244.0, .length = 2});
-	CHECK(encode(offset, *two) == make_bytes({0x44, 0x00}));
+	CHECK(encode_value(offset, *two) == make_bytes({0x44, 0x00}));
 	CHECK(offset.decode(make_bytes({0x44})) == imapb_value{.value = 240.0, .length = 1});
-	CHECK(encode(offset, imapb_value{.value = 244.0}) == make_bytes({0x44, 0x00, 0x00, 0x00}));
+	CHECK(encode_value(offset, imapb_value{.value = 244.0}) == make_bytes({0x44, 0x00, 0x00, 0x00}));
 
 	CHECK(offset.decode({}) == std::unexpected(field_error::bad_length));
 	CHECK(offset.decode(byte_vector(9)) == std::unexpected(field_error::bad_length));
-	CHECK(encode(offset, imapb_value{.value = 1.0, .length = 0}) == std::unexpected(field_error::bad_length));
-	CHECK(encode(offset, imapb_value{.value = 1.0, .length = 9}) == std::unexpected(field_error::bad_length));
+	CHECK(encode_value(offset, imapb_value{.value = 1.0, .length = 0}) == std::unexpected(field_error::bad_length));
+	CHECK(encode_value(offset, imapb_value{.value = 1.0, .length = 9}) == std::unexpected(field_error::bad_length));
 
 	// Special values
 	CHECK(offset.decode(make_bytes({0xD0, 0x00})) == std::unexpected(field_error::error_indicator));
-	CHECK(encode(offset, imapb_value{.value = 301.0, .length = 2}) == make_bytes({0xE1, 0x00}));
+	CHECK(encode_value(offset, imapb_value{.value = 301.0, .length = 2}) == make_bytes({0xE1, 0x00}));
 	auto out = byte_vector{};
 	auto writer = byte_writer{out};
 	CHECK(offset.encode_error_indicator(writer));
@@ -307,15 +381,15 @@ TEST_CASE("KLV integer codec encodes a fixed or variable length", "[klv]") {
 	constexpr auto u64 = codec::integer<uint64_t>{.length = codec::variable_length};
 	constexpr auto i32 = codec::integer<int32_t>{.length = codec::variable_length};
 
-	CHECK(encode(u24, 0x12'3456U) == make_bytes({0x12, 0x34, 0x56}));
-	CHECK(encode(u24, 0x100'0000U) == std::unexpected(field_error::out_of_range));
-	CHECK(encode(u64, 0) == make_bytes({0x00}));
-	CHECK(encode(u64, 300) == make_bytes({0x01, 0x2C}));
-	CHECK(encode(u64, 409'600) == make_bytes({0x06, 0x40, 0x00}));
-	CHECK(encode(i32, -1) == make_bytes({0xFF}));
-	CHECK(encode(i32, 128) == make_bytes({0x00, 0x80}));
-	CHECK(encode(i32, -128) == make_bytes({0x80}));
-	CHECK(encode(i32, -129) == make_bytes({0xFF, 0x7F}));
+	CHECK(encode_value(u24, 0x12'3456U) == make_bytes({0x12, 0x34, 0x56}));
+	CHECK(encode_value(u24, 0x100'0000U) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(u64, 0) == make_bytes({0x00}));
+	CHECK(encode_value(u64, 300) == make_bytes({0x01, 0x2C}));
+	CHECK(encode_value(u64, 409'600) == make_bytes({0x06, 0x40, 0x00}));
+	CHECK(encode_value(i32, -1) == make_bytes({0xFF}));
+	CHECK(encode_value(i32, 128) == make_bytes({0x00, 0x80}));
+	CHECK(encode_value(i32, -128) == make_bytes({0x80}));
+	CHECK(encode_value(i32, -129) == make_bytes({0xFF, 0x7F}));
 }
 
 TEST_CASE("KLV BER-OID codec", "[klv]") {
@@ -324,7 +398,7 @@ TEST_CASE("KLV BER-OID codec", "[klv]") {
 	CHECK(format.decode(make_bytes({0x81, 0x48})) == uint32_t{200});
 	CHECK(format.decode(make_bytes({0x01, 0x02})) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode({}) == std::unexpected(field_error::invalid_value));
-	CHECK(encode(format, 200) == make_bytes({0x81, 0x48}));
+	CHECK(encode_value(format, 200) == make_bytes({0x81, 0x48}));
 }
 
 TEST_CASE("KLV variable IEEE 754 codec accepts both precisions", "[klv]") {
@@ -335,12 +409,12 @@ TEST_CASE("KLV variable IEEE 754 codec accepts both precisions", "[klv]") {
 	CHECK(format.decode(make_bytes({0x3F, 0x80})) == std::unexpected(field_error::bad_length));
 
 	// The shortest exact form
-	CHECK(encode(format, 256.0) == make_bytes({0x43, 0x80, 0x00, 0x00}));
-	CHECK(encode(format, 0.1) == make_bytes({0x3F, 0xB9, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9A}));
-	CHECK(encode(format, 1e300).value().size() == 8);
+	CHECK(encode_value(format, 256.0) == make_bytes({0x43, 0x80, 0x00, 0x00}));
+	CHECK(encode_value(format, 0.1) == make_bytes({0x3F, 0xB9, 0x99, 0x99, 0x99, 0x99, 0x99, 0x9A}));
+	CHECK(encode_value(format, 1e300).value().size() == 8);
 
-	CHECK(encode(codec::ieee754_variable{.length = 8}, 256.0).value().size() == 8);
-	CHECK(encode(codec::ieee754_variable{.length = 4}, 1e300) == std::unexpected(field_error::out_of_range));
+	CHECK(encode_value(codec::ieee754_variable{.length = 8}, 256.0).value().size() == 8);
+	CHECK(encode_value(codec::ieee754_variable{.length = 4}, 1e300) == std::unexpected(field_error::out_of_range));
 }
 
 TEST_CASE("KLV variable IEEE 754 codec can decode binary16", "[klv]") {
@@ -357,7 +431,7 @@ TEST_CASE("KLV variable IEEE 754 codec can decode binary16", "[klv]") {
 	CHECK(format.decode(make_bytes({0x3F, 0x80, 0x00, 0x00})) == 1.0);
 
 	// Encoding never writes binary16
-	CHECK(encode(format, 1.0) == make_bytes({0x3F, 0x80, 0x00, 0x00}));
+	CHECK(encode_value(format, 1.0) == make_bytes({0x3F, 0x80, 0x00, 0x00}));
 }
 
 TEST_CASE("KLV UUID codec", "[klv]") {
@@ -367,7 +441,7 @@ TEST_CASE("KLV UUID codec", "[klv]") {
 	auto const value = format.decode(bytes);
 	REQUIRE(value);
 	CHECK(format.to_string(*value) == "f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
-	CHECK(encode(format, *value) == bytes);
+	CHECK(encode_value(format, *value) == bytes);
 	CHECK(format.decode(make_bytes({0x01})) == std::unexpected(field_error::bad_length));
 }
 
@@ -376,8 +450,8 @@ TEST_CASE("KLV repeated codec decodes one occurrence as a list of one item", "[k
 
 	CHECK(format.decode(make_bytes({0x07})) == std::vector<uint8_t>{7});
 	CHECK(format.decode({}) == std::unexpected(field_error::bad_length));
-	CHECK(encode(format, {7}) == make_bytes({0x07}));
-	CHECK(encode(format, {7, 8}) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(format, {7}) == make_bytes({0x07}));
+	CHECK(encode_value(format, {7, 8}) == std::unexpected(field_error::invalid_value));
 	CHECK(format.to_string({7, 8}) == "[7, 8]");
 }
 
@@ -398,7 +472,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 		CHECK(value->imapb_min == Approx(1.0));
 		CHECK(value->imapb_max == Approx(8.0));
 		CHECK(value->imapb_limit_length == 4);
-		CHECK(encode(reals, *value) == bytes);
+		CHECK(encode_value(reals, *value) == bytes);
 	}
 
 	SECTION("natural binary32 elements") {
@@ -410,7 +484,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 		REQUIRE(value);
 		CHECK(value->elements == std::vector<double>{1, 2, 3, 4, 5, 6, 7, 8});
 		CHECK(value->algorithm == array_algorithm::natural);
-		CHECK(encode(reals, *value) == bytes);
+		CHECK(encode_value(reals, *value) == bytes);
 	}
 
 	SECTION("unsigned integers with a bias") {
@@ -418,13 +492,13 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 		auto const value = integers.decode(first);
 		REQUIRE(value);
 		CHECK(value->elements == std::vector<uint64_t>{12, 54, 350, 2, 2048, 0, 127, 128, 1});
-		CHECK(encode(integers, *value) == first);
+		CHECK(encode_value(integers, *value) == first);
 
 		auto const second = hex("01 05 01 04 81 02 00 28 19 0D 3C");
 		auto const biased = integers.decode(second);
 		REQUIRE(biased);
 		CHECK(biased->elements == std::vector<uint64_t>{130, 170, 155, 143, 190});
-		CHECK(encode(integers, *biased) == second);
+		CHECK(encode_value(integers, *biased) == second);
 	}
 
 	SECTION("run-length encoding in three dimensions") {
@@ -442,7 +516,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 		);
 
 		// The encoder finds other rectangles than the example. Thus, its bytes differ.
-		auto const encoded = encode(integers, *value);
+		auto const encoded = encode_value(integers, *value);
 		REQUIRE(encoded);
 		CHECK(integers.decode(*encoded) == value);
 	}
@@ -471,9 +545,9 @@ TEST_CASE("KLV MDARRAY codec rejects malformed and unsupported arrays", "[klv]")
 	// IMAPB limits that are not in order
 	CHECK(reals.decode(hex("01 01 01 02 41 00 00 00 3F 80 00 00 00")) == invalid);
 
-	CHECK(encode(reals, mdarray<double>{.sizes = {3}, .elements = {1.0}}) == invalid);
+	CHECK(encode_value(reals, mdarray<double>{.sizes = {3}, .elements = {1.0}}) == invalid);
 	CHECK(
-	    encode(integers, mdarray<uint64_t>{.sizes = {1}, .elements = {256}, .element_size = 1})
+	    encode_value(integers, mdarray<uint64_t>{.sizes = {1}, .elements = {256}, .element_size = 1})
 	    == std::unexpected(field_error::out_of_range)
 	);
 }
@@ -492,7 +566,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes Boolean arrays", "[klv]") {
 		}
 		CHECK(value->elements == expected);
 		CHECK(value->algorithm == array_algorithm::boolean);
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 
 		// The last byte is missing
 		CHECK(format.decode(hex("02 05 04 01 03 48 A8")) == std::unexpected(field_error::invalid_value));
@@ -501,7 +575,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes Boolean arrays", "[klv]") {
 	SECTION("natural elements: not zero is true") {
 		auto const value = mdarray<bool>{.sizes = {3}, .elements = {true, false, true}, .element_size = 2};
 		auto const bytes = hex("01 03 02 01 00 01 00 00 00 01");
-		CHECK(encode(format, value) == bytes);
+		CHECK(encode_value(format, value) == bytes);
 		CHECK(format.decode(bytes) == value);
 		CHECK(format.decode(hex("01 01 01 01 80"))->elements == std::vector<bool>{true});
 	}
@@ -513,7 +587,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes Boolean arrays", "[klv]") {
 		    .element_size = 1,
 		    .algorithm = array_algorithm::run_length,
 		};
-		auto const bytes = encode(format, value);
+		auto const bytes = encode_value(format, value);
 		REQUIRE(bytes);
 		CHECK(format.decode(*bytes) == value);
 	}
@@ -553,7 +627,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes signed integer arrays", "[klv]"
 		CHECK(value->elements == expected);
 
 		// The encoder finds the same background and the same five rectangles as the example
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 	}
 
 	SECTION("overlapping run-length rectangles (ST 1303 Appendix D.4, Figure 13 and Figure 14)") {
@@ -586,7 +660,7 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes signed integer arrays", "[klv]"
 		REQUIRE(four);
 		CHECK(four->elements == expected);
 
-		auto const encoded = encode(format, *four);
+		auto const encoded = encode_value(format, *four);
 		REQUIRE(encoded);
 		CHECK(format.decode(*encoded) == four);
 	}
@@ -594,13 +668,13 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes signed integer arrays", "[klv]"
 	SECTION("natural elements in two's complement") {
 		auto const value = mdarray<int64_t>{.sizes = {3}, .elements = {-1, 127, -128}, .element_size = 1};
 		auto const bytes = hex("01 03 01 01 FF 7F 80");
-		CHECK(encode(format, value) == bytes);
+		CHECK(encode_value(format, value) == bytes);
 		CHECK(format.decode(bytes) == value);
 
 		auto const too_large = mdarray<int64_t>{.sizes = {1}, .elements = {128}, .element_size = 1};
 		auto const too_small = mdarray<int64_t>{.sizes = {1}, .elements = {-129}, .element_size = 1};
-		CHECK(encode(format, too_large) == std::unexpected(field_error::out_of_range));
-		CHECK(encode(format, too_small) == std::unexpected(field_error::out_of_range));
+		CHECK(encode_value(format, too_large) == std::unexpected(field_error::out_of_range));
+		CHECK(encode_value(format, too_small) == std::unexpected(field_error::out_of_range));
 	}
 
 	SECTION("the unsigned integer and Boolean algorithms need other element types") {
@@ -633,7 +707,7 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		CHECK(value->sparse);
 		CHECK(value->long_parse_control);
 		CHECK(value->rho_imapb);
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 	}
 
 	SECTION("one parse control byte") {
@@ -645,7 +719,7 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		CHECK(value->sigma == std::vector{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0});
 		CHECK(value->rho.empty());
 		CHECK_FALSE(value->long_parse_control);
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 	}
 
 	SECTION("IMAPB standard deviations stay raw integers without their ranges") {
@@ -656,7 +730,7 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		CHECK(value->sigma.empty());
 		CHECK(value->sigma_raw == std::vector<uint64_t>{0x2580, 0x2580, 0x1E00, 0x4000, 0x8000, 0x4000});
 		CHECK(value->rho_length == 0);
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 
 		// The set gives the tags of the earlier items. The parent standard defines no ranges here.
 		auto const preceding = std::vector<uint32_t>{9, 1, 2, 3, 4, 5, 6};
@@ -676,7 +750,7 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		REQUIRE(value);
 		CHECK(value->sigma == std::vector{300.0, 300.0, 30.0, 1.0, 1.0, 0.125});
 		CHECK(value->sigma_raw.empty());
-		CHECK(encode(ranged, *value) == bytes);
+		CHECK(encode_value(ranged, *value) == bytes);
 
 		// Without the tags of the covered items, the values stay raw
 		CHECK(ranged.decode(bytes)->sigma_raw.size() == 6);
@@ -687,12 +761,12 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		// A covered item without a range
 		auto unknown = *value;
 		unknown.members.back() = 7;
-		CHECK(encode(ranged, unknown) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(ranged, unknown) == std::unexpected(field_error::invalid_value));
 
 		// Real IMAPB values need the ranges, and the members must match the matrix size
-		CHECK(encode(format, *value) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(format, *value) == std::unexpected(field_error::invalid_value));
 		unknown.members.pop_back();
-		CHECK(encode(ranged, unknown) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(ranged, unknown) == std::unexpected(field_error::invalid_value));
 	}
 
 	SECTION("malformed packs and values") {
@@ -708,24 +782,24 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		    .long_parse_control = false,
 		    .rho_imapb = false,
 		};
-		CHECK(encode(format, value) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(format, value) == std::unexpected(field_error::invalid_value));
 		value.long_parse_control = true;
-		CHECK(encode(format, value).has_value());
+		CHECK(encode_value(format, value).has_value());
 
 		value.sigma.pop_back();
-		CHECK(encode(format, value) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(format, value) == std::unexpected(field_error::invalid_value));
 
 		// Raw standard deviations need the IMAPB flag
 		auto raw = klv::sdcc_flp{.size = 1, .sigma_raw = {5}, .rho_length = 0, .long_parse_control = true};
-		CHECK(encode(format, raw) == std::unexpected(field_error::invalid_value));
+		CHECK(encode_value(format, raw) == std::unexpected(field_error::invalid_value));
 		raw.sigma_imapb = true;
 		raw.sigma_length = 2;
-		CHECK(encode(format, raw) == hex("01 90 12 00 05"));
+		CHECK(encode_value(format, raw) == hex("01 90 12 00 05"));
 	}
 
 	SECTION("Mode 2 parse control by default (MISB ST 0601, ST 1107, and ST 1202)") {
 		auto const value = klv::sdcc_flp{.size = 1, .sigma = {1.0}, .rho_length = 0};
-		CHECK(encode(format, value) == hex("01 90 04 3F 80 00 00"));
+		CHECK(encode_value(format, value) == hex("01 90 04 3F 80 00 00"));
 	}
 
 	SECTION("a sparse pack without correlation coefficients has no bit vector (MISB ST 1010 Table 3)") {
@@ -735,7 +809,7 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 		CHECK(value->sparse);
 		CHECK(value->rho_length == 0);
 		CHECK(value->sigma == std::vector{1.0, 2.0});
-		CHECK(encode(format, *value) == bytes);
+		CHECK(encode_value(format, *value) == bytes);
 	}
 
 	SECTION("text") {

@@ -71,13 +71,13 @@ struct ground_plane_squint_angle {
 struct look_direction {
 	static constexpr uint32_t tag = 3;
 	static constexpr std::string_view name = "Look Direction";
-	static constexpr codec::enumeration<look_side> format{.name_of = &to_string};
+	static constexpr codec::enumeration<look_side> format{};
 };
 
 struct image_plane {
 	static constexpr uint32_t tag = 4;
 	static constexpr std::string_view name = "Image Plane";
-	static constexpr codec::enumeration<image_plane_type> format{.name_of = &to_string};
+	static constexpr codec::enumeration<image_plane_type> format{};
 };
 
 struct range_resolution {

@@ -11,12 +11,10 @@
  * The Time Transfer Local Set is always inside another set or pack, so it has no checksum. Some items use the units
  * of the parent time. These are microseconds for a Precision Time Stamp, and nanoseconds in a Nano Time Transfer Pack.
  *
- * A Nano Time Transfer Pack can be a standalone KLV item with the key `nano_time_transfer_pack_key`:
+ * A Nano Time Transfer Pack can be a standalone KLV item (`nano_time_transfer_item`):
  * @code
- * for (auto const& packet : klv::split_packets(bytes)) {
- *     if (packet && klv::key_matches(klv::misb1603::nano_time_transfer_pack_key, packet->key)) {
- *         auto const pack = klv::misb1603::nano_time_transfer_codec{}.decode(packet->value);
- *     }
+ * if (auto const pack = klv::decode_packet<klv::misb1603::nano_time_transfer_item>(bytes)) {
+ *     use(pack->value.time, pack->value.transfer);
  * }
  * @endcode
  */
@@ -270,9 +268,6 @@ struct time_transfer_ls {
 
 // Nano Time Transfer Pack
 
-/// Key of a standalone Nano Time Transfer Pack
-inline constexpr universal_key nano_time_transfer_pack_key = ul("06 0E 2B 34 02 05 01 01 0E 01 03 02 09 00 00 00");
-
 /// A Nano Precision Time Stamp and the Time Transfer Local Set that applies to it
 struct nano_time_transfer {
 	nano_timestamp time{};
@@ -324,6 +319,13 @@ struct nano_time_transfer_codec {
 		    codec::nested<time_transfer_ls>{}.to_string(value.transfer)
 		);
 	}
+};
+
+/// Standalone Nano Time Transfer Pack
+struct nano_time_transfer_item {
+	static constexpr universal_key key = ul("06 0E 2B 34 02 05 01 01 0E 01 03 02 09 00 00 00");
+	static constexpr std::string_view name = "Nano Time Transfer Pack";
+	static constexpr nano_time_transfer_codec format{};
 };
 
 }  // namespace klv::misb1603

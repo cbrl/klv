@@ -1,6 +1,6 @@
 /**
  * @file klv/packet/encode.hpp
- * @brief Universal-key packet encoding
+ * @brief Universal-key packet encoding: a set with a key, or a standalone item
  */
 
 #pragma once
@@ -9,12 +9,16 @@
 #include "klv/bytes/checksum.hpp"
 #include "klv/bytes/types.hpp"
 #include "klv/error.hpp"
+#include "klv/field.hpp"
+#include "klv/packet/item.hpp"
+#include "klv/set/coding.hpp"
 #include "klv/set/definition.hpp"
 #include "klv/set/encode.hpp"
 #include "klv/set/record.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <utility>
 
 namespace klv {
@@ -26,7 +30,7 @@ namespace klv {
  * the function ignores any value in that field. It writes a computed checksum as the last field (see
  * `checksum_function`). On failure, `out` keeps its old size.
  */
-template<universal_set_definition S>
+template<keyed_set_definition S>
 [[nodiscard]]
 auto encode_packet(record<S> const& rec, byte_vector& out) -> result<void> {
 	auto writer = byte_writer{out};
@@ -40,7 +44,7 @@ auto encode_packet(record<S> const& rec, byte_vector& out) -> result<void> {
 
 		if constexpr (has_checksum<S>) {
 			// Placeholder value. The checksum covers the final BER length, so it is computed after the value is done.
-			writer.put_ber_oid(S::checksum_field::tag);
+			detail::put_id<S>(writer, detail::id_of<S, typename S::checksum_field>());
 			writer.put_u8(static_cast<uint8_t>(sizeof(detail::checksum_t<S>)));
 			writer.put_big_endian(detail::checksum_t<S>{0});
 		}
@@ -66,11 +70,43 @@ auto encode_packet(record<S> const& rec, byte_vector& out) -> result<void> {
 }
 
 /// Encode one packet of set `S`
-template<universal_set_definition S>
+template<keyed_set_definition S>
 [[nodiscard]]
 auto encode_packet(record<S> const& rec) -> result<byte_vector> {
 	auto out = byte_vector{};
 	return encode_packet(rec, out).transform([&] { return std::move(out); });
+}
+
+/**
+ * @brief Append one standalone item `I` to `out`
+ *
+ * The packet has the key of `I`, a BER length, and the value. On failure, `out` keeps its old size.
+ */
+template<item_definition I>
+[[nodiscard]]
+auto encode_packet(item<I> const& value, byte_vector& out) -> result<void> {
+	auto writer = byte_writer{out};
+	auto const start = writer.size();
+
+	writer.put_bytes(I::key);
+	auto const status = writer.put_length_prefixed([&] { return I::format.encode(value.value, writer); });
+	if (!status) {
+		writer.truncate(start);
+		return detail::make_error(
+		    error_code::invalid_value,
+		    start,
+		    std::format("Cannot encode item '{}': {}", I::name, klv::to_string(status.error()))
+		);
+	}
+	return {};
+}
+
+/// Encode one standalone item `I`
+template<item_definition I>
+[[nodiscard]]
+auto encode_packet(item<I> const& value) -> result<byte_vector> {
+	auto out = byte_vector{};
+	return encode_packet(value, out).transform([&] { return std::move(out); });
 }
 
 }  // namespace klv

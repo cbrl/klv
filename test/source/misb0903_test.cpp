@@ -18,7 +18,7 @@ using klv_test::micros;
 
 namespace vmti = klv::misb0903;
 
-static_assert(universal_set_definition<vmti::vmti_ls> && has_checksum<vmti::vmti_ls>);
+static_assert(keyed_set_definition<vmti::vmti_ls> && has_checksum<vmti::vmti_ls>);
 
 TEST_CASE("KLV ST 0903 VMTI set decodes an example", "[klv][misb0903]") {
 	auto const vtarget_1234 =

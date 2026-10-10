@@ -2,7 +2,8 @@
  * @file klv/misb0102/security_ls.hpp
  * @brief MISB ST 0102 Security Metadata Local Set definition
  *
- * `security_ls` lists the fields in encode order.
+ * `security_ls` lists the fields in encode order. The set usually arrives nested in another set, without a key. It
+ * can also be a packet with its own key (ST 0102 section 6.7).
  */
 
 #pragma once
@@ -17,6 +18,7 @@ namespace klv::misb0102 {
 /// MISB ST 0102 Security Metadata Local Set
 struct security_ls {
 	static constexpr std::string_view name = "Security Local Set";
+	static constexpr universal_key key = ul("06 0E 2B 34 02 03 01 01 0E 01 03 03 02 00 00 00");
 
 	using fields = field_list<
 	    security_classification,

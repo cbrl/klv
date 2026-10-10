@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cstdint>
 #include <expected>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -64,14 +63,6 @@ auto make_transfer() -> transfer_record {
 	return rec;
 }
 
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
-
 [[nodiscard]]
 auto concat(byte_vector first, byte_vector const& second) -> byte_vector {
 	first.insert(first.end(), second.begin(), second.end());
@@ -107,7 +98,7 @@ TEST_CASE("KLV ST 1603 Time Transfer Parameters", "[klv][misb1603]") {
 	        .method = tt::transfer_method::irig_b,
 	    }
 	);
-	CHECK(encode(format, gps_slew) == make_bytes({0x1A}));
+	CHECK(encode_value(format, gps_slew) == make_bytes({0x1A}));
 
 	// A later version can add more significant bytes
 	CHECK(format.decode(make_bytes({0xFF, 0x1A})) == gps_slew);
@@ -117,7 +108,7 @@ TEST_CASE("KLV ST 1603 Time Transfer Parameters", "[klv][misb1603]") {
 	CHECK(format.decode(make_bytes({0x0C})) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(make_bytes({0x80})) == std::unexpected(field_error::invalid_value));
 	CHECK(
-	    encode(format, {.method = static_cast<tt::transfer_method>(8)}) == std::unexpected(field_error::invalid_value)
+	    encode_value(format, {.method = static_cast<tt::transfer_method>(8)}) == std::unexpected(field_error::invalid_value)
 	);
 
 	CHECK(
@@ -132,12 +123,12 @@ TEST_CASE("KLV ST 1603 Nano Time Transfer Pack", "[klv][misb1603]") {
 
 	auto const bytes = concat(hex(time_bytes), hex(transfer_bytes));
 	CHECK(format.decode(bytes) == full);
-	CHECK(encode(format, full) == bytes);
+	CHECK(encode_value(format, full) == bytes);
 
 	SECTION("a pack of 8 bytes holds only the time stamp") {
 		auto const time_only = tt::nano_time_transfer{.time = example_time(), .transfer = {}};
 		CHECK(format.decode(hex(time_bytes)) == time_only);
-		CHECK(encode(format, time_only) == hex(time_bytes));
+		CHECK(encode_value(format, time_only) == hex(time_bytes));
 		CHECK(format.to_string(time_only) == "{time: 2023-11-14T22:13:20.123456789Z, transfer: {}}");
 	}
 
@@ -150,22 +141,18 @@ TEST_CASE("KLV ST 1603 Nano Time Transfer Pack", "[klv][misb1603]") {
 
 		auto early = full;
 		early.time = nano_timestamp{std::chrono::nanoseconds{-1}};
-		CHECK(encode(format, early) == std::unexpected(field_error::out_of_range));
+		CHECK(encode_value(format, early) == std::unexpected(field_error::out_of_range));
 	}
 
 	SECTION("a standalone KLV item") {
 		auto packet_bytes = byte_vector{};
-		klv_test::append_packet(packet_bytes, tt::nano_time_transfer_pack_key, bytes);
+		klv_test::append_packet(packet_bytes, tt::nano_time_transfer_item::key, bytes);
 		CHECK(packet_bytes.size() == 16 + 1 + 45);
 
-		auto found = std::optional<tt::nano_time_transfer>{};
-		for (auto const& packet : split_packets(packet_bytes)) {
-			REQUIRE(packet);
-			if (key_matches(tt::nano_time_transfer_pack_key, packet->key)) {
-				found = format.decode(packet->value).value();
-			}
-		}
-		CHECK(found == full);
+		auto const decoded = decode_packet<tt::nano_time_transfer_item>(packet_bytes);
+		REQUIRE(decoded);
+		CHECK(decoded->value == full);
+		CHECK(encode_packet(*decoded) == packet_bytes);
 	}
 }
 

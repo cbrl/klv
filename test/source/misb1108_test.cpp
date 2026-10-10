@@ -20,9 +20,9 @@ using klv_test::micros;
 
 namespace iq = klv::misb1108;
 
-static_assert(universal_set_definition<iq::interpretability_quality_ls>);
+static_assert(keyed_set_definition<iq::interpretability_quality_ls>);
 static_assert(has_checksum<iq::interpretability_quality_ls>);
-static_assert(local_set_definition<iq::metric_ls> && !universal_set_definition<iq::metric_ls>);
+static_assert(local_set_definition<iq::metric_ls> && !keyed_set_definition<iq::metric_ls>);
 
 namespace {
 
@@ -35,14 +35,6 @@ constexpr auto set_bytes = std::string_view{
     "05 08 00 05 CA 79 F2 FB E0 00 06 08 40 1C 7E 6B 74 DD 1B D3 "
     "05 01 02 06 01 04 07 03 35 2E 32 08 04 41 C9 99 9A 09 02 04 00 0A 01 03"
 };
-
-template<typename Codec>
-[[nodiscard]]
-auto encode(Codec const& codec, typename Codec::value_type const& value) -> field<byte_vector> {
-	auto out = byte_vector{};
-	auto writer = byte_writer{out};
-	return codec.encode(value, writer).transform([&] { return out; });
-}
 
 }  // namespace
 
@@ -167,16 +159,16 @@ TEST_CASE("KLV ST 1108 Metric Implementer needs the record separator only to enc
 	auto const without = format.decode(hex("4B 57"));
 	REQUIRE(without);
 	CHECK(*without == iq::implementer{.organization = "KW"});
-	CHECK(encode(format, *without) == hex("4B 57"));
+	CHECK(encode_value(format, *without) == hex("4B 57"));
 	CHECK(format.to_string(*without) == "{organization: \"KW\"}");
 
 	// Empty parts
 	CHECK(format.decode(hex("1E")) == iq::implementer{.organization = "", .subgroup = ""});
-	CHECK(encode(format, iq::implementer{.organization = "", .subgroup = ""}) == hex("1E"));
+	CHECK(encode_value(format, iq::implementer{.organization = "", .subgroup = ""}) == hex("1E"));
 
-	CHECK(encode(format, iq::implementer{.organization = "A\x1E" "B"}) == std::unexpected(field_error::invalid_value));
+	CHECK(encode_value(format, iq::implementer{.organization = "A\x1E" "B"}) == std::unexpected(field_error::invalid_value));
 	CHECK(
-	    encode(format, iq::implementer{.organization = std::string(100, 'A'), .subgroup = std::string(28, 'B')})
+	    encode_value(format, iq::implementer{.organization = std::string(100, 'A'), .subgroup = std::string(28, 'B')})
 	    == std::unexpected(field_error::bad_length)
 	);
 }
@@ -185,18 +177,18 @@ TEST_CASE("KLV ST 1108 rejects malformed packs", "[klv][misb1108]") {
 	constexpr auto period = iq::metric_period_pack::format;
 	CHECK(period.decode(hex("00 05 CA 79 F2 FB E0 00 00 6A CF")) == std::unexpected(field_error::bad_length));
 	CHECK(
-	    encode(period, iq::metric_period{.offset = std::chrono::microseconds{-1}})
+	    encode_value(period, iq::metric_period{.offset = std::chrono::microseconds{-1}})
 	    == std::unexpected(field_error::out_of_range)
 	);
 	CHECK(
-	    encode(period, iq::metric_period{.offset = std::chrono::microseconds{int64_t{1} << 32}})
+	    encode_value(period, iq::metric_period{.offset = std::chrono::microseconds{int64_t{1} << 32}})
 	    == std::unexpected(field_error::out_of_range)
 	);
 
 	constexpr auto corners = iq::window_corners_pack::format;
 	CHECK(corners.decode(hex("00 00 85 50 8A 00 00")) == std::unexpected(field_error::invalid_value));
 	CHECK(corners.decode(hex("00 00 85")) == std::unexpected(field_error::invalid_value));
-	CHECK(encode(corners, iq::window_corners{.c2_row = 720, .c2_column = 1280}) == hex("00 00 85 50 8A 00"));
+	CHECK(encode_value(corners, iq::window_corners{.c2_row = 720, .c2_column = 1280}) == hex("00 00 85 50 8A 00"));
 
 	// Compression Type 5 is reserved
 	auto const rec = decode_set<iq::interpretability_quality_ls>(hex("05 01 05"));

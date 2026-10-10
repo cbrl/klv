@@ -13,11 +13,9 @@
 
 #pragma once
 
-#include "klv/field.hpp"
 #include "klv/set/definition.hpp"
 #include "klv/set/record.hpp"
 
-#include <type_traits>
 #include <utility>
 
 namespace klv::misb1607 {
@@ -28,19 +26,13 @@ namespace klv::misb1607 {
  * A child value replaces the parent value. An empty child field (length of zero) makes the parent field empty. The
  * function ignores a child field that the parent set does not define, and the unknown fields of the child.
  */
-template<local_set_definition Parent, local_set_definition Child>
+template<set_definition Parent, set_definition Child>
 auto apply(record<Parent>& parent, record<Child> const& child) -> void {
-	for_each_field(child, [&]<typename E>(std::type_identity<E>, field<value_t<E>> const& value) {
-		if constexpr (member_of<E, Parent>) {
-			if (value || value.error() != field_error::absent) {
-				parent.template assign<E>(value);
-			}
-		}
-	});
+	copy_fields(child, parent);
 }
 
 /// The parent with the fields of `child` applied: the amended set, or the complete set of one segment
-template<local_set_definition Parent, local_set_definition Child>
+template<set_definition Parent, set_definition Child>
 [[nodiscard]]
 auto merge(record<Parent> parent, record<Child> const& child) -> record<Parent> {
 	apply(parent, child);

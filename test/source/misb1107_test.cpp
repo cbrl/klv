@@ -20,7 +20,7 @@ using klv_test::micros;
 
 namespace mg = klv::misb1107;
 
-static_assert(universal_set_definition<mg::metric_geopositioning_ls>);
+static_assert(keyed_set_definition<mg::metric_geopositioning_ls>);
 static_assert(has_checksum<mg::metric_geopositioning_ls>);
 static_assert(has_covering_field<mg::metric_geopositioning_ls>);
 
