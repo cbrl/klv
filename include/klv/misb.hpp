@@ -2,6 +2,7 @@
 
 #include "klv/misb0102.hpp"
 #include "klv/misb0601.hpp"
+#include "klv/misb0602.hpp"
 #include "klv/misb0603.hpp"
 #include "klv/misb0806.hpp"
 #include "klv/misb0809.hpp"

@@ -5,7 +5,8 @@
 
 #pragma once
 
-#include <cstddef>
+#include "klv/codecs/string.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -189,28 +190,13 @@ constexpr auto universal_text(object_country_coding value) -> std::string_view {
 
 namespace detail {
 
-/// True when the two texts are equal. The comparison ignores the case of ASCII letters.
-[[nodiscard]]
-constexpr auto equal_ignoring_case(std::string_view first, std::string_view second) noexcept -> bool {
-	auto const lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
-	if (first.size() != second.size()) {
-		return false;
-	}
-	for (auto i = size_t{0}; i < first.size(); ++i) {
-		if (lower(first[i]) != lower(second[i])) {
-			return false;
-		}
-	}
-	return true;
-}
-
 /// The value of `Enum` whose Universal Set text is `text`
 template<typename Enum>
 [[nodiscard]]
 constexpr auto parse_universal_text(std::string_view text) -> std::optional<Enum> {
 	for (auto i = 0U; i <= 0xFFU; ++i) {
 		auto const value = static_cast<Enum>(i);
-		if (auto const name = universal_text(value); !name.empty() && equal_ignoring_case(name, text)) {
+		if (auto const name = universal_text(value); !name.empty() && klv::detail::equal_ignoring_case(name, text)) {
 			return value;
 		}
 	}

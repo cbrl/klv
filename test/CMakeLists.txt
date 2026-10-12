@@ -23,6 +23,7 @@ add_executable(
     source/codec_test.cpp
     source/misb0102_test.cpp
     source/misb0601_test.cpp
+    source/misb0602_test.cpp
     source/misb0603_test.cpp
     source/misb0806_test.cpp
     source/misb0809_test.cpp

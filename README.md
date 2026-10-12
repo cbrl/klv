@@ -4,6 +4,7 @@ klv is a header-only C++23 library that decodes and encodes KLV (SMPTE 336)
 metadata. It includes definitions for MISB ST 0601 (UAS Datalink Local Set) and
 these other MISB standards:
 - ST 0102 (Security Local Set and Universal Set)
+- ST 0602 (Annotation Metadata Set)
 - ST 0603 (MISP Time System and Timestamps)
 - ST 0806 (Remote Video Terminal)
 - ST 0809 (Meteorological Metadata)
@@ -79,7 +80,8 @@ auto const bytes = klv::encode_packet(uas);  // result<byte_vector>
 The encoder writes the fields in definition order and adds the checksum as the
 last field. Each set uses the checksum of its standard. ST 0601 and ST 0903 use
 a 16-bit sum, ST 1002, ST 1107, ST 1108, ST 1504, and ST 1507 use CRC-16-CCITT,
-and ST 0806 uses CRC-32/MPEG-2. ST 0102, ST 0809, and ST 1301 have no checksum.
+and ST 0806 uses CRC-32/MPEG-2. ST 0102, ST 0602, ST 0809, and ST 1301 have no
+checksum.
 
 A set inside another set has no checksum, as ST 0903.6 and ST 1002.3 require.
 The checksum of the parent packet covers the nested bytes. The decoder keeps a
