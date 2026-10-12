@@ -9,7 +9,7 @@
 #include "klv/misb0903/algorithm_ls.hpp"
 #include "klv/misb0903/ontology_ls.hpp"
 #include "klv/misb0903/vtarget_ls.hpp"
-#include "klv/misb1204.hpp"
+#include "klv/misb1204/core_id_codec.hpp"
 
 #include <cstdint>
 #include <string_view>

@@ -18,7 +18,7 @@
 
 #include "klv/bytes.hpp"
 #include "klv/codec.hpp"
-#include "klv/misb1204.hpp"
+#include "klv/misb1204/core_id_codec.hpp"
 #include "klv/set.hpp"
 
 #include <cstdint>

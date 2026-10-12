@@ -11,7 +11,7 @@
 #include "klv/misb0601/packs/command_record.hpp"
 #include "klv/misb0601/packs/countries.hpp"
 #include "klv/misb0806/rvt_ls.hpp"
-#include "klv/misb1204.hpp"
+#include "klv/misb1204/core_id_codec.hpp"
 
 #include <cstdint>
 #include <string_view>

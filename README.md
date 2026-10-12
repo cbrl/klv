@@ -31,17 +31,21 @@ these other MISB standards:
 
 namespace kv = klv::misb0601;
 
-void handle(klv::byte_span bytes) {
+void handle(std::span<std::byte const> bytes) {
     for (auto const& packet : klv::decode_packets<kv::uas_datalink_ls>(bytes)) {
         if (!packet) {
             // packet.error().message, packet.error().offset
             continue;
         }
-        if (auto const* uas = std::get_if<klv::record<kv::uas_datalink_ls>>(&*packet)) {
-            // get<E>() returns std::expected<T, klv::field_error>
-            if (auto const& latitude = uas->get<kv::sensor_latitude>()) {
-                use(*latitude);
-            }
+
+        auto const* uas = std::get_if<klv::record<kv::uas_datalink_ls>>(&*packet);
+        if (!uas) {
+            continue;
+        }
+
+        // get<E>() returns std::expected<T, klv::field_error>
+        if (auto const& latitude = uas->get<kv::sensor_latitude>()) {
+            use(*latitude);
         }
     }
 }
