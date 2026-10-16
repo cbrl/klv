@@ -95,13 +95,12 @@ struct countries_codec {
 
 	[[nodiscard]]
 	auto to_string(countries const& value) const -> std::string {
-		auto const method = misb0102::to_string(value.coding_method);
 		auto const country = [](std::optional<std::string> const& code) {
 			return code ? *code : std::string{"absent"};
 		};
 		return std::format(
 		    "{{coding method: {}, overflight: {}, operator: {}, manufacture: {}}}",
-		    method.empty() ? std::format("{}", static_cast<unsigned>(value.coding_method)) : std::string{method},
+		    codec::enumeration<misb0102::classifying_country_coding>{}.to_string(value.coding_method),
 		    country(value.overflight_country),
 		    country(value.operator_country),
 		    country(value.country_of_manufacture)

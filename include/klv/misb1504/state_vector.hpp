@@ -82,16 +82,6 @@ auto put_reals(std::array<double, N> const& values, size_t length, byte_writer& 
 	return {};
 }
 
-template<size_t N>
-[[nodiscard]]
-auto reals_text(std::array<double, N> const& values) -> std::string {
-	auto text = std::string{"["};
-	for (auto i = size_t{0}; i < N; ++i) {
-		text += std::format("{}{}", i == 0 ? "" : ", ", values[i]);
-	}
-	return text + "]";
-}
-
 }  // namespace detail
 
 /**
@@ -119,7 +109,7 @@ struct real_pack_codec {
 
 	[[nodiscard]]
 	auto to_string(value_type const& value) const -> std::string {
-		return detail::reals_text(value);
+		return klv::detail::list_text(value);
 	}
 };
 
@@ -184,7 +174,7 @@ struct state_vector_codec {
 		    "{{frame: {}, kind: {}, elements: {}}}",
 		    misb1504::to_string(value.frame),
 		    misb1504::to_string(value.kind),
-		    detail::reals_text(value.elements)
+		    klv::detail::list_text(value.elements)
 		);
 	}
 

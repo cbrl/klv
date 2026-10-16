@@ -42,17 +42,23 @@ consteval auto ul(std::string_view hex) -> universal_key {
 		detail::require(i + 1 < hex.size(), "Incomplete hex byte in universal key");
 		detail::require(count < key.size(), "Universal key has more than 16 bytes");
 
-		auto const high = detail::hex_digit(hex[i]);
-		auto const low = detail::hex_digit(hex[i + 1]);
-		detail::require(high >= 0 && low >= 0, "Invalid hex digit in universal key");
+		auto const byte = detail::hex_byte(hex[i], hex[i + 1]);
+		detail::require(byte >= 0, "Invalid hex digit in universal key");
 
-		key[count++] = static_cast<std::byte>((high << 4) | low);
+		key[count++] = static_cast<std::byte>(byte);
 		i += 2;
 	}
 
 	detail::require(count == key.size(), "Universal key has fewer than 16 bytes");
 	return key;
 }
+
+namespace detail {
+
+/// Index of the version byte (byte 8) of a universal label
+inline constexpr auto version_index = size_t{7};
+
+}  // namespace detail
 
 /**
  * @brief Compare a universal key with key bytes from a packet
@@ -61,14 +67,12 @@ consteval auto ul(std::string_view hex) -> universal_key {
  */
 [[nodiscard]]
 constexpr auto key_matches(universal_key const& expected, byte_span actual) noexcept -> bool {
-	constexpr auto version_index = size_t{7};
-
 	if (actual.size() != expected.size()) {
 		return false;
 	}
 
 	for (auto i = size_t{0}; i < expected.size(); ++i) {
-		if (i != version_index && expected[i] != actual[i]) {
+		if (i != detail::version_index && expected[i] != actual[i]) {
 			return false;
 		}
 	}
@@ -83,10 +87,8 @@ constexpr auto key_matches(universal_key const& expected, byte_span actual) noex
  */
 [[nodiscard]]
 constexpr auto key_less(universal_key const& first, universal_key const& second) noexcept -> bool {
-	constexpr auto version_index = size_t{7};
-
 	for (auto i = size_t{0}; i < first.size(); ++i) {
-		if (i != version_index && first[i] != second[i]) {
+		if (i != detail::version_index && first[i] != second[i]) {
 			return first[i] < second[i];
 		}
 	}

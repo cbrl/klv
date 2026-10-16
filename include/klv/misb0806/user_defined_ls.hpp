@@ -43,7 +43,7 @@ struct user_data_id_codec {
 
 	[[nodiscard]]
 	auto encode(user_data_id const& value, byte_writer& out) const -> encode_result {
-		if (value.id > 0x3F || static_cast<uint8_t>(value.type) > 3) {
+		if (value.id > 0x3F || misb0806::to_string(value.type).empty()) {
 			return std::unexpected(field_error::invalid_value);
 		}
 		out.put_u8(static_cast<uint8_t>((static_cast<uint8_t>(value.type) << 6U) | value.id));

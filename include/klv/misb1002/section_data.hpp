@@ -42,7 +42,8 @@ struct section_data {
  * - the uncertainty MDARRAY
  * - the three planar fit values (IEEE 754)
  *
- * The writer can omit the optional values at the end. An omitted value before a present value has a zero length. Encoding writes a planar fit value with 4 bytes when binary32 holds it exactly, and 8 bytes otherwise.
+ * The writer can omit the optional values at the end. An omitted value before a present value has a zero length.
+ * Encoding writes a planar fit value with 4 bytes when binary32 holds it exactly, and 8 bytes otherwise.
  */
 struct section_data_codec {
 	using value_type = section_data;

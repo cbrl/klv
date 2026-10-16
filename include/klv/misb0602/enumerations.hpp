@@ -7,7 +7,7 @@
 
 #include "klv/codecs/string.hpp"
 
-#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -73,22 +73,29 @@ enum class media_type : uint8_t {
 	jpeg,
 	png,
 	svg,
+	count_,
 };
+
+/// Number of media types
+inline constexpr auto media_type_count = static_cast<size_t>(media_type::count_);
 
 /// MIME text of a media type, for example "image/svg+xml"
 [[nodiscard]]
 constexpr auto to_string(media_type value) noexcept -> std::string_view {
+	using enum media_type;
 	switch (value) {
-		case media_type::bmp:
+		case bmp:
 			return "image/x-ms-bmp";
-		case media_type::cgm:
+		case cgm:
 			return "image/cgm";
-		case media_type::jpeg:
+		case jpeg:
 			return "image/jpeg";
-		case media_type::png:
+		case png:
 			return "image/png";
-		case media_type::svg:
+		case svg:
 			return "image/svg+xml";
+		case count_:
+			break;
 	}
 	return {};
 }
@@ -101,11 +108,11 @@ constexpr auto to_string(media_type value) noexcept -> std::string_view {
  */
 [[nodiscard]]
 constexpr auto parse_media_type(std::string_view text) -> std::optional<media_type> {
-	using enum media_type;
 	if (klv::detail::equal_ignoring_case(text, "cgm")) {
-		return cgm;
+		return media_type::cgm;
 	}
-	for (auto const value : std::array{bmp, cgm, jpeg, png, svg}) {
+	for (auto index = size_t{0}; index < media_type_count; ++index) {
+		auto const value = static_cast<media_type>(index);
 		if (klv::detail::equal_ignoring_case(text, to_string(value))) {
 			return value;
 		}

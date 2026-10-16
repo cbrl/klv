@@ -208,16 +208,11 @@ struct sdcc_flp {
 
 	[[nodiscard]]
 	auto to_string(klv::sdcc_flp const& value) const -> std::string {
-		auto const list = [](auto const& values) {
-			auto text = std::string{"["};
-			for (auto i = size_t{0}; i < values.size(); ++i) {
-				text += std::format("{}{}", i == 0 ? "" : ", ", values[i]);
-			}
-			return text + "]";
-		};
-		auto const members = value.members.empty() ? std::string{} : std::format(", members: {}", list(value.members));
-		auto const sigma = value.sigma_raw.empty() ? list(value.sigma) : list(value.sigma_raw);
-		return std::format("{{size: {}{}, sigma: {}, rho: {}}}", value.size, members, sigma, list(value.rho));
+		using detail::list_text;
+		auto const members =
+		    value.members.empty() ? std::string{} : std::format(", members: {}", list_text(value.members));
+		auto const sigma = value.sigma_raw.empty() ? list_text(value.sigma) : list_text(value.sigma_raw);
+		return std::format("{{size: {}{}, sigma: {}, rho: {}}}", value.size, members, sigma, list_text(value.rho));
 	}
 
 private:

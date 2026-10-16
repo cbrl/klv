@@ -88,11 +88,10 @@ struct payload_record_codec {
 
 	[[nodiscard]]
 	auto to_string(payload_record const& value) const -> std::string {
-		auto const type = misb0601::to_string(value.type);
 		return std::format(
 		    "{{id: {}, type: {}, name: \"{}\"}}",
 		    value.id,
-		    type.empty() ? std::format("{}", static_cast<uint32_t>(value.type)) : std::string{type},
+		    codec::enumeration<payload_type>{}.to_string(value.type),
 		    value.name
 		);
 	}

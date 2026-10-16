@@ -185,6 +185,13 @@ TEST_CASE("KLV ST 0602 item values", "[klv][misb0602]") {
 		CHECK(ann::parse_media_type("cgm") == ann::media_type::cgm);
 		CHECK(ann::parse_media_type("image/gif") == std::nullopt);
 		CHECK(ann::to_string(ann::media_type::jpeg) == "image/jpeg");
+		CHECK(ann::to_string(ann::media_type::count_).empty());
+
+		// Each media type reads back from its MIME text
+		for (auto index = size_t{0}; index < ann::media_type_count; ++index) {
+			auto const value = static_cast<ann::media_type>(index);
+			CHECK(ann::parse_media_type(ann::to_string(value)) == value);
+		}
 	}
 }
 

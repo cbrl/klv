@@ -55,6 +55,14 @@ constexpr auto hex_digit(char c) noexcept -> int {
 	return -1;
 }
 
+/// Value of the byte with the hex digits `high` and `low`, or -1 when one of them is not a hex digit
+[[nodiscard]]
+constexpr auto hex_byte(char high, char low) noexcept -> int {
+	auto const first = hex_digit(high);
+	auto const second = hex_digit(low);
+	return first < 0 || second < 0 ? -1 : (first << 4) | second;
+}
+
 [[nodiscard]]
 constexpr auto is_hex_space(char c) noexcept -> bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -82,13 +90,12 @@ inline auto from_hex(std::string_view hex) -> result<byte_vector> {
 			return detail::make_error(error_code::invalid_value, i, "Incomplete hex byte");
 		}
 
-		auto const high = detail::hex_digit(hex[i]);
-		auto const low = detail::hex_digit(hex[i + 1]);
-		if (high < 0 || low < 0) {
+		auto const byte = detail::hex_byte(hex[i], hex[i + 1]);
+		if (byte < 0) {
 			return detail::make_error(error_code::invalid_value, i, std::format("Invalid hex digit at position {}", i));
 		}
 
-		bytes.push_back(static_cast<std::byte>((high << 4) | low));
+		bytes.push_back(static_cast<std::byte>(byte));
 		i += 2;
 	}
 

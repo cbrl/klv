@@ -146,14 +146,13 @@ struct weapons_store_codec {
 
 	[[nodiscard]]
 	auto to_string(weapons_store const& value) const -> std::string {
-		auto const status = misb0601::to_string(value.general_status);
 		return std::format(
 		    "{{station: {}, hardpoint: {}, carriage: {}, store: {}, status: {}, engagement: 0x{:X}, type: \"{}\"}}",
 		    value.station_id,
 		    value.hardpoint_id,
 		    value.carriage_id,
 		    value.store_id,
-		    status.empty() ? std::format("{}", static_cast<unsigned>(value.general_status)) : std::string{status},
+		    codec::enumeration<weapon_status>{}.to_string(value.general_status),
 		    value.engagement_status,
 		    value.weapon_type
 		);

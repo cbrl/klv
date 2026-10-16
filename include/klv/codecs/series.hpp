@@ -9,11 +9,11 @@
 #include "klv/bytes/byte_writer.hpp"
 #include "klv/bytes/types.hpp"
 #include "klv/codecs/codec_type.hpp"
+#include "klv/codecs/pack.hpp"
 #include "klv/field.hpp"
 
 #include <cstdint>
 #include <expected>
-#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -74,14 +74,7 @@ struct series {
 
 	[[nodiscard]]
 	auto to_string(value_type const& value) const -> std::string {
-		auto text = std::string{"["};
-		for (auto const& item : value) {
-			if (text.size() > 1) {
-				text += ", ";
-			}
-			text += element.to_string(item);
-		}
-		return text + "]";
+		return detail::list_text(value, [&](element_type const& item) { return element.to_string(item); });
 	}
 };
 
@@ -116,11 +109,7 @@ struct ber_oid_list {
 
 	[[nodiscard]]
 	auto to_string(value_type const& value) const -> std::string {
-		auto text = std::string{"["};
-		for (auto const item : value) {
-			text += std::format("{}{}", text.size() > 1 ? ", " : "", item);
-		}
-		return text + "]";
+		return detail::list_text(value);
 	}
 };
 

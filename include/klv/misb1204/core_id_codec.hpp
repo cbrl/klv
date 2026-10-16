@@ -65,15 +65,11 @@ constexpr auto for_each_id(core_id const& value, F&& f) -> void {
 	}
 }
 
-[[nodiscard]]
-constexpr auto is_id_type(id_type type) -> bool {
-	return type == id_type::managed || type == id_type::virtual_id || type == id_type::physical;
-}
-
 /// True when `value` follows the EBNF of ST 1204 section 7.1
 [[nodiscard]]
 constexpr auto is_valid(core_id const& value) -> bool {
-	if ((value.sensor && !is_id_type(value.sensor->type)) || (value.platform && !is_id_type(value.platform->type))) {
+	auto const defined = [](std::optional<device_id> const& id) { return !id || !to_string(id->type).empty(); };
+	if (!defined(value.sensor) || !defined(value.platform)) {
 		return false;
 	}
 	auto const foundational = value.sensor || value.platform || value.window;
@@ -104,12 +100,11 @@ inline auto read_groups(std::string_view text, byte_vector& out) -> bool {
 			return false;
 		}
 		for (auto k = i; k < i + 4; k += 2) {
-			auto const high = klv::detail::hex_digit(text[k]);
-			auto const low = klv::detail::hex_digit(text[k + 1]);
-			if (high < 0 || low < 0) {
+			auto const byte = klv::detail::hex_byte(text[k], text[k + 1]);
+			if (byte < 0) {
 				return false;
 			}
-			out.push_back(static_cast<std::byte>((high << 4) | low));
+			out.push_back(static_cast<std::byte>(byte));
 		}
 	}
 	return true;
@@ -262,9 +257,8 @@ inline auto parse_core_id(std::string_view text) -> std::optional<core_id> {
 		ids.remove_prefix(more ? slash + 1 : ids.size());
 	}
 
-	auto const high = klv::detail::hex_digit(text[last + 1]);
-	auto const low = klv::detail::hex_digit(text[last + 2]);
-	if (high < 0 || low < 0 || static_cast<unsigned>((high << 4) | low) != check_value(text.substr(0, last))) {
+	auto const check = klv::detail::hex_byte(text[last + 1], text[last + 2]);
+	if (check < 0 || static_cast<unsigned>(check) != check_value(text.substr(0, last))) {
 		return std::nullopt;
 	}
 

@@ -524,6 +524,14 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 	SECTION("text") {
 		auto const value = mdarray<double>{.sizes = {2}, .elements = {1.5, 2.0}};
 		CHECK(reals.to_string(value) == "{sizes: [2], algorithm: Natural, elements: [1.5, 2]}");
+
+		// The text shows the first 16 elements
+		auto const large = mdarray<uint64_t>{.sizes = {3, 6}, .elements = std::vector<uint64_t>(18, 7)};
+		CHECK(
+		    integers.to_string(large)
+		    == "{sizes: [3, 6], algorithm: Natural, elements: [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, ... (18 "
+		       "elements)]}"
+		);
 	}
 }
 

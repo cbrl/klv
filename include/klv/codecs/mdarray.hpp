@@ -24,6 +24,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -219,18 +220,16 @@ struct mdarray {
 	auto to_string(value_type const& value) const -> std::string {
 		constexpr auto shown = size_t{16};
 
-		auto text = std::string{"{sizes: ["};
-		for (auto i = size_t{0}; i < value.sizes.size(); ++i) {
-			text += std::format("{}{}", i == 0 ? "" : ", ", value.sizes[i]);
-		}
-		text += std::format("], algorithm: {}, elements: [", klv::to_string(value.algorithm));
-		for (auto i = size_t{0}; i < std::min(value.elements.size(), shown); ++i) {
-			text += std::format("{}{}", i == 0 ? "" : ", ", value.elements[i]);
-		}
+		auto elements = detail::list_text(value.elements | std::views::take(static_cast<std::ptrdiff_t>(shown)));
 		if (value.elements.size() > shown) {
-			text += std::format(", ... ({} elements)", value.elements.size());
+			elements.insert(elements.size() - 1, std::format(", ... ({} elements)", value.elements.size()));
 		}
-		return text + "]}";
+		return std::format(
+		    "{{sizes: {}, algorithm: {}, elements: {}}}",
+		    detail::list_text(value.sizes),
+		    klv::to_string(value.algorithm),
+		    elements
+		);
 	}
 
 private:

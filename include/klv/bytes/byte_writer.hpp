@@ -74,9 +74,9 @@ public:
 		put_big_endian(static_cast<uint64_t>(length), width);
 	}
 
-	/// Write a BER-OID integer (local set tag)
-	auto put_ber_oid(uint32_t value) -> void {
-		auto groups = std::array<uint8_t, 5>{};
+	/// Write a BER-OID integer, for example a local set tag
+	auto put_ber_oid(uint64_t value) -> void {
+		auto groups = std::array<uint8_t, 10>{};
 		auto count = size_t{0};
 
 		do {

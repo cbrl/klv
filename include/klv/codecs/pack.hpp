@@ -1,6 +1,6 @@
 /**
  * @file klv/codecs/pack.hpp
- * @brief Read and write helpers for codecs of packs: values with an inner structure
+ * @brief Read, write, and display helpers for codecs of packs: values with an inner structure
  *
  * The read helpers return a `field_error` on failure, so a pack codec can pass the error on.
  */
@@ -18,10 +18,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <limits>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace klv::detail {
 
@@ -141,6 +144,29 @@ auto finish(byte_reader const& reader, T value) -> field<T> {
 		return std::unexpected(field_error::invalid_value);
 	}
 	return value;
+}
+
+/// Display text of a list, for example "[1, 2, 3]". `text` gives the display text of one element.
+template<std::ranges::input_range R, typename F>
+[[nodiscard]]
+auto list_text(R&& values, F&& text) -> std::string {
+	auto result = std::string{"["};
+	auto first = true;
+	for (auto&& value : values) {
+		if (!first) {
+			result += ", ";
+		}
+		result += text(value);
+		first = false;
+	}
+	return result + "]";
+}
+
+/// Display text of a list. `std::format` gives the display text of each element.
+template<std::ranges::input_range R>
+[[nodiscard]]
+auto list_text(R&& values) -> std::string {
+	return list_text(std::forward<R>(values), [](auto const& value) { return std::format("{}", value); });
 }
 
 }  // namespace klv::detail

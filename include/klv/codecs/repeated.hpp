@@ -8,6 +8,7 @@
 #include "klv/bytes/byte_writer.hpp"
 #include "klv/bytes/types.hpp"
 #include "klv/codecs/codec_type.hpp"
+#include "klv/codecs/pack.hpp"
 #include "klv/field.hpp"
 
 #include <expected>
@@ -59,14 +60,7 @@ struct repeated {
 
 	[[nodiscard]]
 	auto to_string(value_type const& value) const -> std::string {
-		auto text = std::string{"["};
-		for (auto const& entry : value) {
-			if (text.size() > 1) {
-				text += ", ";
-			}
-			text += item.to_string(entry);
-		}
-		return text + "]";
+		return detail::list_text(value, [&](item_type const& entry) { return item.to_string(entry); });
 	}
 };
 

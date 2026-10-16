@@ -97,9 +97,9 @@ struct view_ranges_codec {
 	[[nodiscard]]
 	auto encode(view_ranges const& value, byte_writer& out) const -> encode_result {
 		auto const axes = std::array{
-		    const_axis{&value.azimuth, &azimuth_format},
-		    const_axis{&value.elevation, &elevation_format},
-		    const_axis{&value.roll, &roll_format},
+		    axis{&value.azimuth, &azimuth_format},
+		    axis{&value.elevation, &elevation_format},
+		    axis{&value.roll, &roll_format},
 		};
 
 		// Omit the absent intervals at the end
@@ -141,13 +141,11 @@ struct view_ranges_codec {
 	}
 
 private:
+	/// One interval of a value and the format of its start. `Interval` is `std::optional<view_interval>` or its const
+	/// form.
+	template<typename Interval>
 	struct axis {
-		std::optional<view_interval>* interval;
-		codec::imapb const* start_format;
-	};
-
-	struct const_axis {
-		std::optional<view_interval> const* interval;
+		Interval* interval;
 		codec::imapb const* start_format;
 	};
 };

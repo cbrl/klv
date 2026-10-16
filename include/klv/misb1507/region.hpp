@@ -10,9 +10,7 @@
 #include "klv/field.hpp"
 #include "klv/misb1507/detector.hpp"
 
-#include <array>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
@@ -54,21 +52,14 @@ namespace detail {
 /// Time offset as a BER-OID of up to 64 bits. A value above the `int64_t` range fails with `out_of_range`.
 [[nodiscard]]
 inline auto read_offset(byte_reader& reader) -> field<std::chrono::nanoseconds> {
-	auto value = uint64_t{0};
-	for (auto first = true;; first = false) {
-		auto const byte = reader.read_u8();
-		if (!byte || (first && *byte == 0x80U) || value > (std::numeric_limits<uint64_t>::max() >> 7U)) {
-			return std::unexpected(field_error::invalid_value);
-		}
-		value = (value << 7U) | (*byte & 0x7FU);
-		if ((*byte & 0x80U) == 0) {
-			break;
-		}
+	auto const value = reader.read_ber_oid<uint64_t>();
+	if (!value) {
+		return std::unexpected(field_error::invalid_value);
 	}
-	if (value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+	if (*value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
 		return std::unexpected(field_error::out_of_range);
 	}
-	return std::chrono::nanoseconds{static_cast<int64_t>(value)};
+	return std::chrono::nanoseconds{static_cast<int64_t>(*value)};
 }
 
 [[nodiscard]]
@@ -76,16 +67,7 @@ inline auto put_offset(std::chrono::nanoseconds value, byte_writer& out) -> enco
 	if (value.count() < 0) {
 		return std::unexpected(field_error::out_of_range);
 	}
-	auto bits = static_cast<uint64_t>(value.count());
-	auto groups = std::array<uint8_t, 10>{};
-	auto count = size_t{0};
-	do {
-		groups[count++] = static_cast<uint8_t>(bits & 0x7FU);
-		bits >>= 7U;
-	} while (bits != 0);
-	for (auto i = count; i > 0; --i) {
-		out.put_u8(static_cast<uint8_t>(groups[i - 1] | (i > 1 ? 0x80U : 0x00U)));
-	}
+	out.put_ber_oid(static_cast<uint64_t>(value.count()));
 	return {};
 }
 

@@ -33,8 +33,9 @@ struct row_range {
  * @brief SDCC array: an MDARRAY of unsigned integers, with an IMAPB value of E bytes in each element
  *
  * The array has two dimensions. Each row holds one kind of standard deviation or correlation coefficient. Each column
- * holds one correspondence point. Each row has its own IMAPB range. The value is the array of the real values. Its array
- * algorithm applies to the raw integers, and its IMAPB limits are not used. An IMAPB special value decodes as NaN.
+ * holds one correspondence point. Each row has its own IMAPB range. The value is the array of the real values. Its
+ * array algorithm applies to the raw integers, and its IMAPB limits are not used. An IMAPB special value decodes as
+ * NaN.
  *
  * The array has `min_rows` or 6 rows. Another shape fails with `field_error::invalid_value`.
  */

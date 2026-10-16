@@ -11,6 +11,7 @@
 #include "klv/error.hpp"
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -150,15 +151,16 @@ public:
 	}
 
 	/**
-	 * @brief Read a BER-OID integer (local set tag)
+	 * @brief Read a BER-OID integer, for example a local set tag
 	 *
 	 * Each byte gives 7 bits, most significant group first. Bit 8 is set on every byte except the last. A leading
-	 * 0x80 byte and values wider than 32 bits are errors.
+	 * 0x80 byte and values wider than `T` are errors.
 	 */
+	template<std::unsigned_integral T = uint32_t>
 	[[nodiscard]]
-	auto read_ber_oid() -> result<uint32_t> {
+	auto read_ber_oid() -> result<T> {
 		auto const start = offset();
-		auto value = uint32_t{0};
+		auto value = T{0};
 
 		for (auto first = true;; first = false) {
 			auto const byte = read_u8();
@@ -170,18 +172,22 @@ public:
 				return detail::make_error(
 				    error_code::invalid_ber_oid,
 				    start,
-				    std::format("BER-OID tag at offset {} starts with 0x80", start)
+				    std::format("BER-OID value at offset {} starts with 0x80", start)
 				);
 			}
-			if (value > (std::numeric_limits<uint32_t>::max() >> 7U)) {
+			if (value > (std::numeric_limits<T>::max() >> 7U)) {
 				return detail::make_error(
 				    error_code::invalid_ber_oid,
 				    start,
-				    std::format("BER-OID tag at offset {} is wider than 32 bits", start)
+				    std::format(
+				        "BER-OID value at offset {} is wider than {} bits",
+				        start,
+				        std::numeric_limits<T>::digits
+				    )
 				);
 			}
 
-			value = (value << 7U) | (*byte & 0x7FU);
+			value = static_cast<T>((value << 7U) | (*byte & 0x7FU));
 			if ((*byte & 0x80U) == 0) {
 				return value;
 			}
