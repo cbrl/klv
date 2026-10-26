@@ -52,7 +52,7 @@ struct user_data_id_codec {
 
 	[[nodiscard]]
 	auto to_string(user_data_id const& value) const -> std::string {
-		return std::format("{{type: {}, id: {}}}", misb0806::to_string(value.type), value.id);
+		return std::format("{{type: {}, id: {}}}", klv::detail::enum_text(value.type), value.id);
 	}
 };
 

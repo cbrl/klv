@@ -39,13 +39,30 @@ struct detector_window {
 
 namespace detail {
 
+/**
+ * @brief BER-OID value of up to `T` bits
+ *
+ * A value that the pack cuts off fails with `field_error::bad_length`, as a short `read_exact` does. Another malformed
+ * value fails with `field_error::invalid_value`.
+ */
+template<ber_oid_integer T = uint32_t>
+[[nodiscard]]
+auto read_number(byte_reader& reader) -> field<T> {
+	auto const value = reader.read_ber_oid<T>();
+	if (!value) {
+		auto const truncated = value.error().code == error_code::unexpected_end_of_data;
+		return std::unexpected(truncated ? field_error::bad_length : field_error::invalid_value);
+	}
+	return *value;
+}
+
 [[nodiscard]]
 inline auto read_detector(byte_reader& reader) -> field<detector> {
-	auto const row = klv::detail::read_oid(reader);
+	auto const row = read_number(reader);
 	if (!row) {
 		return std::unexpected(row.error());
 	}
-	auto const column = klv::detail::read_oid(reader);
+	auto const column = read_number(reader);
 	if (!column) {
 		return std::unexpected(column.error());
 	}

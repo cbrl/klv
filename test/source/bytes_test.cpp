@@ -12,7 +12,17 @@ using namespace klv;
 using klv_test::hex;
 using klv_test::make_bytes;
 
+// A BER-OID value is a number. bool and the character types do not hold one.
+static_assert(ber_oid_integer<uint8_t> && ber_oid_integer<uint32_t> && ber_oid_integer<uint64_t>);
+static_assert(!ber_oid_integer<bool> && !ber_oid_integer<char8_t> && !ber_oid_integer<char16_t>);
+static_assert(!ber_oid_integer<char32_t> && !ber_oid_integer<int32_t>);
+
 namespace {
+
+template<typename T>
+concept reads_ber_oid_as = requires(byte_reader reader) { reader.read_ber_oid<T>(); };
+
+static_assert(reads_ber_oid_as<uint64_t> && !reads_ber_oid_as<bool>);
 
 /// Status type for the length-prefixed write tests
 using encode_result_for_test = std::expected<void, int>;

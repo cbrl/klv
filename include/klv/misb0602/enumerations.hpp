@@ -7,7 +7,7 @@
 
 #include "klv/codecs/string.hpp"
 
-#include <cstddef>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
@@ -73,11 +73,16 @@ enum class media_type : uint8_t {
 	jpeg,
 	png,
 	svg,
-	count_,
 };
 
-/// Number of media types
-inline constexpr auto media_type_count = static_cast<size_t>(media_type::count_);
+/// Each media type, in definition order
+inline constexpr auto media_types = std::array{
+    media_type::bmp,
+    media_type::cgm,
+    media_type::jpeg,
+    media_type::png,
+    media_type::svg,
+};
 
 /// MIME text of a media type, for example "image/svg+xml"
 [[nodiscard]]
@@ -94,8 +99,6 @@ constexpr auto to_string(media_type value) noexcept -> std::string_view {
 			return "image/png";
 		case svg:
 			return "image/svg+xml";
-		case count_:
-			break;
 	}
 	return {};
 }
@@ -111,8 +114,7 @@ constexpr auto parse_media_type(std::string_view text) -> std::optional<media_ty
 	if (klv::detail::equal_ignoring_case(text, "cgm")) {
 		return media_type::cgm;
 	}
-	for (auto index = size_t{0}; index < media_type_count; ++index) {
-		auto const value = static_cast<media_type>(index);
+	for (auto const value : media_types) {
 		if (klv::detail::equal_ignoring_case(text, to_string(value))) {
 			return value;
 		}

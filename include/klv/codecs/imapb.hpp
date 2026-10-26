@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <limits>
 #include <string>
 #include <tuple>
 
@@ -34,6 +35,17 @@ struct imapb_value {
 		return std::tie(lhs.value, lhs.length) == std::tie(rhs.value, rhs.length);
 	}
 };
+
+namespace detail {
+
+/// max - min of an IMAPB range. Throws `std::invalid_argument` unless min < max and max - min is finite.
+constexpr auto imapb_span(double min, double max) -> double {
+	require(min < max, "An IMAPB format needs min < max");
+	require(max - min <= std::numeric_limits<double>::max(), "An IMAPB format needs a finite max - min");
+	return max - min;
+}
+
+}  // namespace detail
 
 }  // namespace klv
 
@@ -62,12 +74,12 @@ public:
 
 	static constexpr auto max_length = size_t{8};
 
+	/// Throws `std::invalid_argument` unless min < max, max - min is finite, and the length is 1 to 8 bytes
 	constexpr imapb(double min, double max, size_t length) :
 	    min_(min),
 	    max_(max),
 	    length_(length),
-	    b_pow_(ceil_log2(max - min)) {
-		detail::require(min < max, "An IMAPB format needs min < max");
+	    b_pow_(ceil_log2(detail::imapb_span(min, max))) {
 		detail::require(length >= 1 && length <= max_length, "An IMAPB format needs a length of 1 to 8 bytes");
 	}
 
@@ -184,7 +196,7 @@ private:
 		double offset;
 	};
 
-	/// Smallest integer p with 2^p >= value (ST 1201 bPow)
+	/// Smallest integer p with 2^p >= value (ST 1201 bPow). The value must be finite and above zero.
 	[[nodiscard]]
 	static constexpr auto ceil_log2(double value) noexcept -> int {
 		auto power = 0;
@@ -193,7 +205,9 @@ private:
 			scale *= 2.0;
 			++power;
 		}
-		while (scale / 2.0 >= value) {
+
+		// Above 2^1023, the first loop ends at infinity (p = 1024). Half of infinity is infinity, so stop there.
+		while (scale <= std::numeric_limits<double>::max() && scale / 2.0 >= value) {
 			scale /= 2.0;
 			--power;
 		}
@@ -256,10 +270,11 @@ class imapb_value {
 public:
 	using value_type = klv::imapb_value;
 
+	/// Throws `std::invalid_argument` unless min < max and max - min is finite
 	constexpr imapb_value(double min, double max) :
 	    min_(min),
 	    max_(max) {
-		detail::require(min < max, "An IMAPB format needs min < max");
+		detail::imapb_span(min, max);
 	}
 
 	[[nodiscard]]

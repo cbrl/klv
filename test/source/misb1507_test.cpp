@@ -155,7 +155,9 @@ TEST_CASE("KLV ST 1507 region errors", "[klv][misb1507]") {
 	early.end = nanoseconds{-1};
 	CHECK(encode_value(format, early) == std::unexpected(field_error::out_of_range));
 
-	CHECK(format.decode(hex("00 00 81 7A 8F 50 09")) == std::unexpected(field_error::invalid_value));
+	// A pack that ends inside a value is short. A malformed value is not valid.
+	CHECK(format.decode(hex("00 00 81 7A 8F 50 09")) == std::unexpected(field_error::bad_length));
+	CHECK(format.decode(hex("00 00 81")) == std::unexpected(field_error::bad_length));
 	CHECK(format.decode(hex("00 00 81 7A 8F 50 09 13 00")) == std::unexpected(field_error::invalid_value));
 	CHECK(format.decode(hex("00 00 80 01 02 09 13")) == std::unexpected(field_error::invalid_value));
 }
@@ -191,7 +193,8 @@ TEST_CASE("KLV ST 1507 Window Corners Pack", "[klv][misb1507]") {
 	CHECK(format.decode(hex("88 37 8E 7F 00 00")) == window);
 	CHECK(format.to_string(window) == "{c1: (1079, 1919), c2: (0, 0)}");
 
-	CHECK(format.decode(hex("88 37 8E 7F 00")) == std::unexpected(field_error::invalid_value));
+	CHECK(format.decode(hex("88 37 8E 7F 00")) == std::unexpected(field_error::bad_length));
+	CHECK(format.decode(hex("88 37 8E 7F 00 81")) == std::unexpected(field_error::bad_length));
 	CHECK(format.decode(hex("88 37 8E 7F 00 00 00")) == std::unexpected(field_error::invalid_value));
 }
 

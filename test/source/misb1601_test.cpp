@@ -79,3 +79,23 @@ TEST_CASE("KLV ST 1601 SDCC arrays need a valid shape", "[klv][misb1601]") {
 	auto const one_dimension = mdarray<double>{.sizes = {6}, .elements = {0, 0, 0, 0, 0, 0}, .element_size = 1};
 	CHECK(format.encode(one_dimension, writer) == std::unexpected(field_error::invalid_value));
 }
+
+TEST_CASE("KLV ST 1601 SDCC arrays need valid row ranges", "[klv][misb1601]") {
+	// The default ranges are {0, 0}. Each row then has an empty range, which IMAPB cannot map.
+	constexpr auto format = misb1601::sdcc_array_codec{};
+	auto const bytes = hex("02 06 01 01 01 00 00 00 00 00 00");
+	CHECK(format.decode(bytes) == std::unexpected(field_error::invalid_value));
+
+	auto out = byte_vector{};
+	auto writer = byte_writer{out};
+	auto const value = mdarray<double>{.sizes = {6, 1}, .elements = {0, 0, 0, 0, 0, 0}, .element_size = 1};
+	CHECK(format.encode(value, writer) == std::unexpected(field_error::invalid_value));
+
+	// A row range with an infinite span
+	auto wide = misb1601::correspondence_points_row_column_sdcc::format;
+	wide.ranges[2] = {.min = -1.7e308, .max = 1.7e308};
+	CHECK(wide.decode(bytes) == std::unexpected(field_error::invalid_value));
+
+	// Valid ranges decode
+	CHECK(misb1601::correspondence_points_row_column_sdcc::format.decode(bytes).has_value());
+}

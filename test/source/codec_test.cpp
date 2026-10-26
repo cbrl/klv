@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -319,6 +320,24 @@ TEST_CASE("KLV IMAPB codec applies the zero offset only to a range that contains
 	CHECK(format.decode(make_bytes({0x00})) == -0.2);
 }
 
+TEST_CASE("KLV IMAPB codec rejects a range that it cannot map", "[klv]") {
+	auto const nan = std::numeric_limits<double>::quiet_NaN();
+
+	// Each range throws at once. Before the check, an empty or infinite span did not end.
+	CHECK_THROWS_AS(codec::imapb(1.0, 1.0, 2), std::invalid_argument);
+	CHECK_THROWS_AS(codec::imapb(2.0, 1.0, 2), std::invalid_argument);
+	CHECK_THROWS_AS(codec::imapb(0.0, nan, 2), std::invalid_argument);
+	CHECK_THROWS_AS(codec::imapb(-1.7e308, 1.7e308, 2), std::invalid_argument);
+	CHECK_THROWS_AS(codec::imapb_value(1.0, 1.0), std::invalid_argument);
+	CHECK_THROWS_AS(codec::imapb_value(-1.7e308, 1.7e308), std::invalid_argument);
+
+	// A finite span above 2^1023 gives bPow = 1024
+	auto const wide = codec::imapb{-8.0e307, 8.0e307, 8};
+	auto const zero = encode_value(wide, 0.0);
+	REQUIRE(zero);
+	CHECK(wide.decode(*zero) == 0.0);
+}
+
 TEST_CASE("KLV IMAPB codec special values and range checks", "[klv]") {
 	constexpr auto altitude = codec::imapb{-900.0, 40'000.0, 3};
 	auto const nan = std::numeric_limits<double>::quiet_NaN();
@@ -525,6 +544,11 @@ TEST_CASE("KLV MDARRAY codec decodes and encodes the ST 1303 examples", "[klv]")
 		auto const value = mdarray<double>{.sizes = {2}, .elements = {1.5, 2.0}};
 		CHECK(reals.to_string(value) == "{sizes: [2], algorithm: Natural, elements: [1.5, 2]}");
 
+		// An algorithm that ST 1303 does not define shows its number
+		auto unknown = value;
+		unknown.algorithm = static_cast<array_algorithm>(9);
+		CHECK(reals.to_string(unknown) == "{sizes: [2], algorithm: 9, elements: [1.5, 2]}");
+
 		// The text shows the first 16 elements
 		auto const large = mdarray<uint64_t>{.sizes = {3, 6}, .elements = std::vector<uint64_t>(18, 7)};
 		CHECK(
@@ -558,6 +582,35 @@ TEST_CASE("KLV MDARRAY codec rejects malformed and unsupported arrays", "[klv]")
 	    encode_value(integers, mdarray<uint64_t>{.sizes = {1}, .elements = {256}, .element_size = 1})
 	    == std::unexpected(field_error::out_of_range)
 	);
+}
+
+TEST_CASE("KLV MDARRAY unsigned integer algorithm uses 64 bits", "[klv]") {
+	constexpr auto format = codec::mdarray<uint64_t>{};
+
+	// The bias and the offsets can be wider than 32 bits
+	auto const wide = mdarray<uint64_t>{
+	    .sizes = {2},
+	    .elements = {5'000'000'000, 5'000'000'000 + (uint64_t{1} << 33U)},
+	    .element_size = 8,
+	    .algorithm = array_algorithm::unsigned_integer,
+	};
+	auto const bytes = hex("01 02 08 04 92 D0 97 E4 00 00 A0 80 80 80 00");
+	CHECK(encode_value(format, wide) == bytes);
+	CHECK(format.decode(bytes) == wide);
+
+	auto const full = mdarray<uint64_t>{
+	    .sizes = {2},
+	    .elements = {0, std::numeric_limits<uint64_t>::max()},
+	    .element_size = 8,
+	    .algorithm = array_algorithm::unsigned_integer,
+	};
+	auto const encoded = encode_value(format, full);
+	REQUIRE(encoded);
+	CHECK(format.decode(*encoded) == full);
+
+	// The sum of the bias and an offset is above 2^64 - 1
+	auto const overflow = hex("01 01 08 04 81 FF FF FF FF FF FF FF FF 7F 01");
+	CHECK(format.decode(overflow) == std::unexpected(field_error::invalid_value));
 }
 
 TEST_CASE("KLV MDARRAY codec decodes and encodes Boolean arrays", "[klv]") {
@@ -765,6 +818,16 @@ TEST_CASE("KLV SDCC-FLP codec", "[klv]") {
 
 		// The pack covers more items than the set holds before it
 		CHECK(ranged.decode(bytes, std::vector<uint32_t>{1, 2}) == std::unexpected(field_error::invalid_value));
+
+		// A range with an infinite span leaves the values raw
+		auto const wide = codec::sdcc_flp{
+		    .sigma_ranges = [](uint32_t) -> std::optional<imapb_range> {
+			    return imapb_range{.min = -1.7e308, .max = 1.7e308};
+		    },
+		};
+		auto const raw = wide.decode(bytes, preceding);
+		REQUIRE(raw);
+		CHECK(raw->sigma_raw.size() == 6);
 
 		// A covered item without a range
 		auto unknown = *value;

@@ -49,12 +49,13 @@ struct region {
 
 namespace detail {
 
-/// Time offset as a BER-OID of up to 64 bits. A value above the `int64_t` range fails with `out_of_range`.
+/// Time offset as a BER-OID of up to 64 bits (see `read_number`). A value above the `int64_t` range fails with
+/// `out_of_range`.
 [[nodiscard]]
 inline auto read_offset(byte_reader& reader) -> field<std::chrono::nanoseconds> {
-	auto const value = reader.read_ber_oid<uint64_t>();
+	auto const value = read_number<uint64_t>(reader);
 	if (!value) {
-		return std::unexpected(field_error::invalid_value);
+		return std::unexpected(value.error());
 	}
 	if (*value > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
 		return std::unexpected(field_error::out_of_range);

@@ -91,7 +91,7 @@ struct payload_record_codec {
 		return std::format(
 		    "{{id: {}, type: {}, name: \"{}\"}}",
 		    value.id,
-		    codec::enumeration<payload_type>{}.to_string(value.type),
+		    klv::detail::enum_text(value.type),
 		    value.name
 		);
 	}

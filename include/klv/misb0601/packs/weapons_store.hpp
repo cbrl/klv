@@ -88,7 +88,8 @@ struct weapons_store {
 /**
  * @brief Weapons store record: four BER-OID IDs, a BER-OID status, then the length-prefixed weapon type
  *
- * The status holds the general status in bits 0 to 7 and the engagement status in bits 8 to 11.
+ * The status holds the general status in bits 0 to 7 and the engagement status in bits 8 to 11. ST 0601 adds future
+ * status bits in more significant bytes and keeps bits 0 to 11. Thus, decoding ignores the bits above bit 11.
  */
 struct weapons_store_codec {
 	using value_type = weapons_store;
@@ -96,7 +97,7 @@ struct weapons_store_codec {
 	[[nodiscard]]
 	auto decode(byte_span in) const -> field<weapons_store> {
 		auto reader = byte_reader{in};
-		auto ids = std::array<uint32_t, 5>{};
+		auto ids = std::array<uint32_t, 4>{};
 		for (auto& id : ids) {
 			auto const value = detail::read_oid(reader);
 			if (!value) {
@@ -105,9 +106,9 @@ struct weapons_store_codec {
 			id = *value;
 		}
 
-		auto const status = ids[4];
-		if ((status >> 12U) != 0) {
-			return std::unexpected(field_error::invalid_value);
+		auto const status = detail::read_oid<uint64_t>(reader);
+		if (!status) {
+			return std::unexpected(status.error());
 		}
 		auto const type = detail::read_prefixed(reader);
 		if (!type) {
@@ -121,8 +122,8 @@ struct weapons_store_codec {
 		        .hardpoint_id = ids[1],
 		        .carriage_id = ids[2],
 		        .store_id = ids[3],
-		        .general_status = static_cast<weapon_status>(status & 0xFFU),
-		        .engagement_status = static_cast<uint8_t>((status >> 8U) & 0x0FU),
+		        .general_status = static_cast<weapon_status>(*status & 0xFFU),
+		        .engagement_status = static_cast<uint8_t>((*status >> 8U) & 0x0FU),
 		        .weapon_type = detail::to_text(*type),
 		    }
 		);
@@ -152,7 +153,7 @@ struct weapons_store_codec {
 		    value.hardpoint_id,
 		    value.carriage_id,
 		    value.store_id,
-		    codec::enumeration<weapon_status>{}.to_string(value.general_status),
+		    klv::detail::enum_text(value.general_status),
 		    value.engagement_status,
 		    value.weapon_type
 		);

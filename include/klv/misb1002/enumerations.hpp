@@ -6,6 +6,7 @@
 #pragma once
 
 #include "klv/bytes.hpp"
+#include "klv/codecs/enumeration.hpp"
 #include "klv/field.hpp"
 
 #include <cstdint>
@@ -121,9 +122,9 @@ struct range_image_enumerations_codec {
 	auto to_string(range_image_enumerations const& value) const -> std::string {
 		return std::format(
 		    "{{compression: {}, data type: {}, source: {}}}",
-		    misb1002::to_string(value.compression),
-		    misb1002::to_string(value.data_type),
-		    misb1002::to_string(value.source)
+		    klv::detail::enum_text(value.compression),
+		    klv::detail::enum_text(value.data_type),
+		    klv::detail::enum_text(value.source)
 		);
 	}
 

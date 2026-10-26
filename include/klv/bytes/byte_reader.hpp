@@ -21,6 +21,12 @@
 
 namespace klv {
 
+/// Unsigned integer type that can hold a BER-OID value. `bool` and the character types are not numbers.
+template<typename T>
+concept ber_oid_integer = std::unsigned_integral<T> && !std::same_as<T, bool> && !std::same_as<T, char>
+                       && !std::same_as<T, wchar_t> && !std::same_as<T, char8_t> && !std::same_as<T, char16_t>
+                       && !std::same_as<T, char32_t>;
+
 /**
  * @brief Bounds-checked cursor over a byte span
  *
@@ -156,7 +162,7 @@ public:
 	 * Each byte gives 7 bits, most significant group first. Bit 8 is set on every byte except the last. A leading
 	 * 0x80 byte and values wider than `T` are errors.
 	 */
-	template<std::unsigned_integral T = uint32_t>
+	template<ber_oid_integer T = uint32_t>
 	[[nodiscard]]
 	auto read_ber_oid() -> result<T> {
 		auto const start = offset();

@@ -51,7 +51,7 @@ struct outside_air_temperature {
 	static constexpr uint32_t tag = 39;
 	static constexpr std::string_view name = "Outside Air Temperature";
 	static constexpr std::string_view units = "degC";
-	static constexpr codec::mapped<int8_t> format{-127.0, 127.0, codec::sentinel::reserve_min};
+	static constexpr codec::mapped<int8_t> format{-128.0, 127.0};  // No error value (ST 0601 8.39)
 };
 
 struct differential_pressure {

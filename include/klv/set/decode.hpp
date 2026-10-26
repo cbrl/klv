@@ -35,6 +35,33 @@ struct decode_options {
 
 namespace detail {
 
+/// Options of the set that this thread decodes now. A nested set (`codec::nested`) decodes with these options.
+inline thread_local auto const* active_decode_options = static_cast<decode_options const*>(nullptr);
+
+/// Makes `options` the active decode options while it exists, and then restores the earlier options
+class decode_options_scope {
+public:
+	explicit decode_options_scope(decode_options const& options) noexcept : previous_{active_decode_options} {
+		active_decode_options = &options;
+	}
+
+	decode_options_scope(decode_options_scope const&) = delete;
+	auto operator=(decode_options_scope const&) -> decode_options_scope& = delete;
+
+	~decode_options_scope() {
+		active_decode_options = previous_;
+	}
+
+private:
+	decode_options const* previous_;
+};
+
+/// The options of the set that this thread decodes now, or the default options outside a set
+[[nodiscard]]
+inline auto current_decode_options() noexcept -> decode_options {
+	return active_decode_options != nullptr ? *active_decode_options : decode_options{};
+}
+
 /// Decode one occurrence with `codec`. A covering codec also gets the tags of the items before the occurrence.
 template<typename C>
 [[nodiscard]]
@@ -123,6 +150,7 @@ auto decode_fields(
 		return std::unexpected(std::move(problem));
 	};
 
+	auto const scope = decode_options_scope{options};
 	auto reader = byte_reader{value, base_offset};
 	auto rec = record<S>{};
 

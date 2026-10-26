@@ -1,3 +1,4 @@
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -52,6 +53,12 @@ TEST_CASE("KLV ST 0601 decodes ST 1607 Segment and Amend sets", "[klv][misb0601]
 		auto const amended = misb1607::merge(*rec, amends->front());
 		CHECK(amended.get<kv::mission_id>() == std::string{"BRAVO"});
 		CHECK(amended.get<kv::precision_time_stamp>() == micros(0x1234));
+
+		// The child sets of the parent are the merged child and its siblings. They do not apply to the result.
+		CHECK(second.get<kv::segment_local_set>().error() == field_error::absent);
+		CHECK(second.get<kv::amend_local_set>().error() == field_error::absent);
+		CHECK(amended.get<kv::segment_local_set>().error() == field_error::absent);
+		CHECK(amended.get<kv::amend_local_set>().error() == field_error::absent);
 	}
 
 	SECTION("describe lists the fields of each child set") {
@@ -78,6 +85,16 @@ TEST_CASE("KLV ST 0601 decodes ST 1607 Segment and Amend sets", "[klv][misb0601]
 		REQUIRE(amend);
 		CHECK(amend->front().get<kv::mission_id>() == std::string{"A"});
 		CHECK(encode_set(*with_nested) == outer);
+
+		// The merged segment keeps its own Amend LS, and the next merge applies it
+		auto const segment = misb1607::merge(*with_nested, child->front());
+		CHECK(segment.get<kv::segment_local_set>().error() == field_error::absent);
+		REQUIRE(segment.get<kv::amend_local_set>());
+		CHECK(segment.get<kv::amend_local_set>()->size() == 1);
+
+		auto const amended = misb1607::merge(segment, segment.get<kv::amend_local_set>()->front());
+		CHECK(amended.get<kv::mission_id>() == std::string{"A"});
+		CHECK(amended.get<kv::amend_local_set>().error() == field_error::absent);
 	}
 }
 
@@ -117,4 +134,19 @@ TEST_CASE("KLV ST 0601 Amend LS clears a parent value with a zero-length item", 
 	auto const amended = misb1607::merge(*rec, amend->front());
 	CHECK(amended.get<kv::mission_id>().error() == field_error::empty);
 	CHECK(amended.get<kv::platform_tail_number>() == std::string{"B"});
+}
+
+TEST_CASE("KLV ST 0601 Amend LS field that does not decode keeps the parent value", "[klv][misb0601][misb1607]") {
+	// Sensor Latitude 0x40000000, then an Amend LS with a 2-byte Sensor Latitude (the format needs 4 bytes)
+	auto const bytes = hex("0D 04 40 00 00 00 65 04 0D 02 00 00");
+
+	auto const rec = decode_set<kv::uas_datalink_ls>(bytes);
+	REQUIRE(rec);
+	auto const& amend = rec->get<kv::amend_local_set>();
+	REQUIRE(amend);
+	CHECK(amend->front().get<kv::sensor_latitude>().error() == field_error::bad_length);
+
+	auto const amended = misb1607::merge(*rec, amend->front());
+	REQUIRE(amended.get<kv::sensor_latitude>());
+	CHECK(*amended.get<kv::sensor_latitude>() == Catch::Approx(45.0));
 }

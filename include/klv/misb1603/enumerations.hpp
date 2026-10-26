@@ -6,6 +6,7 @@
 #pragma once
 
 #include "klv/bytes.hpp"
+#include "klv/codecs/enumeration.hpp"
 #include "klv/field.hpp"
 
 #include <cstddef>
@@ -146,9 +147,9 @@ struct transfer_parameters_codec {
 	auto to_string(transfer_parameters const& value) const -> std::string {
 		return std::format(
 		    "{{source: {}, correction: {}, method: {}}}",
-		    misb1603::to_string(value.source),
-		    misb1603::to_string(value.correction),
-		    misb1603::to_string(value.method)
+		    klv::detail::enum_text(value.source),
+		    klv::detail::enum_text(value.correction),
+		    klv::detail::enum_text(value.method)
 		);
 	}
 

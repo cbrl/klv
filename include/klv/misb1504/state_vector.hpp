@@ -8,6 +8,7 @@
 #include "klv/bytes.hpp"
 #include "klv/codec.hpp"
 #include "klv/codecs/pack.hpp"
+#include "klv/codecs/text.hpp"
 #include "klv/misb1504/enumerations.hpp"
 
 #include <array>
@@ -172,8 +173,8 @@ struct state_vector_codec {
 	auto to_string(state_vector const& value) const -> std::string {
 		return std::format(
 		    "{{frame: {}, kind: {}, elements: {}}}",
-		    misb1504::to_string(value.frame),
-		    misb1504::to_string(value.kind),
+		    klv::detail::enum_text(value.frame),
+		    klv::detail::enum_text(value.kind),
 		    klv::detail::list_text(value.elements)
 		);
 	}

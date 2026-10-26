@@ -11,6 +11,7 @@
 #include "klv/bytes/types.hpp"
 #include "klv/codecs/imapb.hpp"
 #include "klv/codecs/pack.hpp"
+#include "klv/codecs/text.hpp"
 #include "klv/field.hpp"
 
 #include <cmath>
@@ -339,7 +340,8 @@ private:
 		formats.reserve(value.size);
 		for (auto const tag : value.members) {
 			auto const range = sigma_ranges(tag);
-			if (!range || !std::isfinite(range->min) || !std::isfinite(range->max) || !(range->min < range->max)) {
+			if (!range || !std::isfinite(range->min) || !std::isfinite(range->max) || !(range->min < range->max)
+			    || !std::isfinite(range->max - range->min)) {
 				return std::nullopt;
 			}
 			formats.emplace_back(range->min, range->max, value.sigma_length);

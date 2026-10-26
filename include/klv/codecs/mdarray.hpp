@@ -9,8 +9,10 @@
 #include "klv/bytes/byte_reader.hpp"
 #include "klv/bytes/byte_writer.hpp"
 #include "klv/bytes/types.hpp"
+#include "klv/codecs/enumeration.hpp"
 #include "klv/codecs/imapb.hpp"
 #include "klv/codecs/pack.hpp"
+#include "klv/codecs/text.hpp"
 #include "klv/field.hpp"
 
 #include <algorithm>
@@ -192,11 +194,11 @@ struct mdarray {
 			return std::unexpected(field_error::invalid_value);
 		}
 
-		out.put_ber_oid(static_cast<uint32_t>(value.sizes.size()));
+		out.put_ber_oid(value.sizes.size());
 		for (auto const size : value.sizes) {
 			out.put_ber_oid(size);
 		}
-		out.put_ber_oid(static_cast<uint32_t>(value.element_size));
+		out.put_ber_oid(value.element_size);
 		out.put_u8(static_cast<uint8_t>(value.algorithm));
 
 		switch (value.algorithm) {
@@ -227,7 +229,7 @@ struct mdarray {
 		return std::format(
 		    "{{sizes: {}, algorithm: {}, elements: {}}}",
 		    detail::list_text(value.sizes),
-		    klv::to_string(value.algorithm),
+		    detail::enum_text(value.algorithm),
 		    elements
 		);
 	}
@@ -357,17 +359,18 @@ private:
 
 	static auto decode_unsigned(byte_reader& reader, size_t count, value_type& result) -> field<void> {
 		if constexpr (std::same_as<T, uint64_t>) {
-			auto const bias = detail::read_oid(reader);
+			auto const bias = detail::read_oid<uint64_t>(reader);
 			if (!bias || count > reader.remaining()) {
 				return std::unexpected(field_error::invalid_value);
 			}
 			result.elements.reserve(count);
 			for (auto i = size_t{0}; i < count; ++i) {
-				auto const offset = detail::read_oid(reader);
-				if (!offset) {
+				// An element must fit in 64 bits
+				auto const offset = detail::read_oid<uint64_t>(reader);
+				if (!offset || *offset > std::numeric_limits<uint64_t>::max() - *bias) {
 					return std::unexpected(field_error::invalid_value);
 				}
-				result.elements.push_back(uint64_t{*bias} + *offset);
+				result.elements.push_back(*bias + *offset);
 			}
 			return {};
 		}
@@ -481,15 +484,9 @@ private:
 	static auto encode_unsigned(value_type const& value, byte_writer& out) -> encode_result {
 		if constexpr (std::same_as<T, uint64_t>) {
 			auto const bias = std::ranges::min(value.elements);
-			if (bias > std::numeric_limits<uint32_t>::max()) {
-				return std::unexpected(field_error::out_of_range);
-			}
-			out.put_ber_oid(static_cast<uint32_t>(bias));
+			out.put_ber_oid(bias);
 			for (auto const element : value.elements) {
-				if (element - bias > std::numeric_limits<uint32_t>::max()) {
-					return std::unexpected(field_error::out_of_range);
-				}
-				out.put_ber_oid(static_cast<uint32_t>(element - bias));
+				out.put_ber_oid(element - bias);
 			}
 			return {};
 		}
@@ -556,7 +553,7 @@ private:
 			status = put_natural(element, value.element_size, out);
 			for (auto const* list : {&start, &extent}) {
 				for (auto const item : *list) {
-					out.put_ber_oid(static_cast<uint32_t>(item));
+					out.put_ber_oid(item);
 				}
 			}
 		}

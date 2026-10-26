@@ -281,6 +281,26 @@ TEST_CASE("KLV nested set decodes and encodes", "[klv]") {
 		REQUIRE(with_bad);
 		CHECK(with_bad->get<sample::inner>() == std::unexpected(field_error::invalid_value));
 	}
+
+	SECTION("a nested set decodes with the options of the outer set") {
+		auto with_unknown = inner_bytes;
+		append_field(with_unknown, 99, make_bytes({0x01}));
+		auto outer = byte_vector{};
+		append_field(outer, 4, with_unknown);
+
+		auto const kept = decode_set<sample::sample_ls>(outer);
+		REQUIRE(kept);
+		REQUIRE(kept->get<sample::inner>());
+		CHECK(kept->get<sample::inner>()->unknown().size() == 1);
+
+		auto const dropped = decode_set<sample::sample_ls>(outer, {.keep_unknown = false});
+		REQUIRE(dropped);
+		REQUIRE(dropped->get<sample::inner>());
+		CHECK(dropped->get<sample::inner>()->unknown().empty());
+
+		// The options apply only while the outer set decodes
+		CHECK(detail::active_decode_options == nullptr);
+	}
 }
 
 TEST_CASE("KLV for_each_field visits fields in definition order", "[klv]") {

@@ -73,7 +73,8 @@ template<set_definition S>
 struct nested {
 	using value_type = record<S>;
 
-	/// Decode the set. A set deeper than `max_nesting_depth` gives `invalid_value`.
+	/// Decode the set with the options of the set around it. A set deeper than `max_nesting_depth` gives
+	/// `invalid_value`.
 	[[nodiscard]]
 	auto decode(byte_span in) const -> field<record<S>> {
 		auto const guard = detail::nesting_guard{};
@@ -81,7 +82,7 @@ struct nested {
 			return std::unexpected(field_error::invalid_value);
 		}
 
-		auto rec = decode_set<S>(in);
+		auto rec = decode_set<S>(in, detail::current_decode_options());
 		if (!rec) {
 			return std::unexpected(field_error::invalid_value);
 		}

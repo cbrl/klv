@@ -67,7 +67,8 @@ Local Set. Such a field has a list value with one item for each occurrence, and
 The ST 0601 Segment and Amend Local Sets (ST 1607) hold records of the ST 0601
 set, so a child set can hold other child sets. `misb1607::merge` applies a
 child set to its parent. An empty field in an Amend Local Set clears the parent
-value. A set more than `klv::max_nesting_depth` (16) levels deep does not
+value. A child field that does not decode keeps the parent value. The merged
+set holds the child sets of the child, not those of the parent. A set more than `klv::max_nesting_depth` (16) levels deep does not
 decode.
 
 ## Encoding

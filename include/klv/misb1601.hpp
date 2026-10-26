@@ -13,10 +13,13 @@
 #include "klv/set.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
+#include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -37,7 +40,8 @@ struct row_range {
  * array algorithm applies to the raw integers, and its IMAPB limits are not used. An IMAPB special value decodes as
  * NaN.
  *
- * The array has `min_rows` or 6 rows. Another shape fails with `field_error::invalid_value`.
+ * The array has `min_rows` or 6 rows. Another shape fails with `field_error::invalid_value`. A row range without
+ * min < max, or with an infinite max - min, also fails with `field_error::invalid_value`.
  */
 struct sdcc_array_codec {
 	using value_type = mdarray<double>;
@@ -55,19 +59,28 @@ struct sdcc_array_codec {
 			return std::unexpected(field_error::invalid_value);
 		}
 
+		auto const formats = row_formats(raw->sizes[0], raw->element_size);
+		if (!formats) {
+			return std::unexpected(field_error::invalid_value);
+		}
+
 		auto result = mdarray<double>{
 		    .sizes = raw->sizes,
 		    .elements = {},
 		    .element_size = raw->element_size,
 		    .algorithm = raw->algorithm,
 		};
+		result.elements.reserve(raw->elements.size());
+
+		// One buffer holds the IMAPB bytes of each element in turn
 		auto const columns = size_t{raw->sizes[1]};
+		auto bytes = byte_vector{};
+		auto writer = byte_writer{bytes};
 		for (auto i = size_t{0}; i < raw->elements.size(); ++i) {
-			auto const format = row_format(i / columns, raw->element_size);
-			auto bytes = byte_vector{};
-			auto writer = byte_writer{bytes};
+			bytes.clear();
 			writer.put_big_endian(raw->elements[i], raw->element_size);
-			result.elements.push_back(format.decode(bytes).value_or(std::numeric_limits<double>::quiet_NaN()));
+			auto const element = (*formats)[i / columns].decode(bytes);
+			result.elements.push_back(element.value_or(std::numeric_limits<double>::quiet_NaN()));
 		}
 		return result;
 	}
@@ -79,17 +92,26 @@ struct sdcc_array_codec {
 			return std::unexpected(field_error::invalid_value);
 		}
 
+		auto const formats = row_formats(value.sizes[0], value.element_size);
+		if (!formats) {
+			return std::unexpected(field_error::invalid_value);
+		}
+
 		auto raw = mdarray<uint64_t>{
 		    .sizes = value.sizes,
 		    .elements = {},
 		    .element_size = value.element_size,
 		    .algorithm = value.algorithm,
 		};
+		raw.elements.reserve(value.elements.size());
+
+		// One buffer holds the IMAPB bytes of each element in turn
 		auto const columns = size_t{value.sizes[1]};
+		auto bytes = byte_vector{};
+		auto writer = byte_writer{bytes};
 		for (auto i = size_t{0}; i < value.elements.size(); ++i) {
-			auto bytes = byte_vector{};
-			auto writer = byte_writer{bytes};
-			if (auto status = row_format(i / columns, value.element_size).encode(value.elements[i], writer); !status) {
+			bytes.clear();
+			if (auto status = (*formats)[i / columns].encode(value.elements[i], writer); !status) {
 				return status;
 			}
 			raw.elements.push_back(read_big_endian<uint64_t>(bytes));
@@ -111,9 +133,18 @@ private:
 		    && element_size <= codec::imapb::max_length;
 	}
 
+	/// The IMAPB format of each of the first `rows` rows, or no value when a row range is not valid
 	[[nodiscard]]
-	auto row_format(size_t row, size_t element_size) const -> codec::imapb {
-		return codec::imapb{ranges[row].min, ranges[row].max, element_size};
+	auto row_formats(size_t rows, size_t element_size) const -> std::optional<std::vector<codec::imapb>> {
+		auto formats = std::vector<codec::imapb>{};
+		formats.reserve(rows);
+		for (auto const& range : ranges | std::views::take(static_cast<std::ptrdiff_t>(rows))) {
+			if (!(range.min < range.max) || !std::isfinite(range.max - range.min)) {
+				return std::nullopt;
+			}
+			formats.emplace_back(range.min, range.max, element_size);
+		}
+		return formats;
 	}
 };
 

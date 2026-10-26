@@ -9,7 +9,7 @@
 #include "klv/bytes/byte_writer.hpp"
 #include "klv/bytes/types.hpp"
 #include "klv/codecs/codec_type.hpp"
-#include "klv/codecs/pack.hpp"
+#include "klv/codecs/text.hpp"
 #include "klv/field.hpp"
 
 #include <cstdint>

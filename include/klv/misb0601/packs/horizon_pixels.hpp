@@ -12,13 +12,14 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <limits>
 #include <optional>
 #include <string>
 #include <tuple>
 
 namespace klv::misb0601 {
 
-/// Geodetic locations of the two horizon points
+/// Geodetic locations of the two horizon points. NaN stands for the error value of ST 0601 (-2^31).
 struct horizon_locations {
 	double latitude0 = 0.0;  ///< deg
 	double longitude0 = 0.0;  ///< deg
@@ -43,12 +44,18 @@ struct horizon_pixels {
 	friend auto operator==(horizon_pixels const&, horizon_pixels const&) -> bool = default;
 };
 
-/// Image Horizon Pixel Pack: four 1-byte coordinates, then optionally four 4-byte mapped latitudes and longitudes
+/**
+ * @brief Image Horizon Pixel Pack: four 1-byte coordinates, then optionally four 4-byte mapped latitudes and longitudes
+ *
+ * Each latitude and longitude is an int32 that maps -(2^31-1)..(2^31-1) to +/-90 or +/-180 degrees (ST 0601 Table 6),
+ * as in tags 82 to 89. The raw value -2^31 is the error value. It decodes as NaN. Encoding writes NaN, and a value
+ * outside the range, as the error value.
+ */
 struct horizon_pixels_codec {
 	using value_type = horizon_pixels;
 
-	static constexpr codec::mapped<uint32_t> latitude_format{-90.0, 90.0};
-	static constexpr codec::mapped<uint32_t> longitude_format{-180.0, 180.0};
+	static constexpr codec::mapped<int32_t> latitude_format{-90.0, 90.0, codec::sentinel::reserve_min};
+	static constexpr codec::mapped<int32_t> longitude_format{-180.0, 180.0, codec::sentinel::reserve_min};
 
 	[[nodiscard]]
 	auto decode(byte_span in) const -> field<horizon_pixels> {
@@ -67,21 +74,15 @@ struct horizon_pixels_codec {
 			return result;
 		}
 
-		auto const latitude0 = latitude_format.decode(in.subspan(4, 4));
-		auto const longitude0 = longitude_format.decode(in.subspan(8, 4));
-		auto const latitude1 = latitude_format.decode(in.subspan(12, 4));
-		auto const longitude1 = longitude_format.decode(in.subspan(16, 4));
-		for (auto const* part : {&latitude0, &longitude0, &latitude1, &longitude1}) {
-			if (!*part) {
-				return std::unexpected(part->error());
-			}
-		}
-
+		// Each raw value is in the domain or is the error value. Thus, only the error value fails.
+		auto const coordinate = [&](codec::mapped<int32_t> const& format, size_t offset) {
+			return format.decode(in.subspan(offset, 4)).value_or(std::numeric_limits<double>::quiet_NaN());
+		};
 		result.locations = horizon_locations{
-		    .latitude0 = *latitude0,
-		    .longitude0 = *longitude0,
-		    .latitude1 = *latitude1,
-		    .longitude1 = *longitude1,
+		    .latitude0 = coordinate(latitude_format, 4),
+		    .longitude0 = coordinate(longitude_format, 8),
+		    .latitude1 = coordinate(latitude_format, 12),
+		    .longitude1 = coordinate(longitude_format, 16),
 		};
 		return result;
 	}

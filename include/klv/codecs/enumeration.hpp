@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace klv::detail {
 
@@ -30,6 +31,16 @@ template<named_enumeration Enum>
 [[nodiscard]]
 constexpr auto enumeration_name(Enum value) -> std::string_view {
 	return to_string(value);
+}
+
+/// Display text of `value`: its name, or its number when the standard does not define the value
+template<named_enumeration Enum>
+[[nodiscard]]
+auto enum_text(Enum value) -> std::string {
+	if (auto const name = enumeration_name(value); !name.empty()) {
+		return std::string{name};
+	}
+	return std::format("{}", std::to_underlying(value));
 }
 
 }  // namespace klv::detail

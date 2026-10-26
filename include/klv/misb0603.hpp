@@ -19,6 +19,7 @@
 #pragma once
 
 #include "klv/bytes.hpp"
+#include "klv/codecs/enumeration.hpp"
 #include "klv/codecs/timestamp.hpp"
 #include "klv/field.hpp"
 
@@ -143,7 +144,7 @@ struct time_status_codec {
 
 	[[nodiscard]]
 	auto to_string(time_status const& value) const -> std::string {
-		return std::format("{{locked: {}, jump: {}}}", value.locked, misb0603::to_string(value.jump));
+		return std::format("{{locked: {}, jump: {}}}", value.locked, klv::detail::enum_text(value.jump));
 	}
 };
 

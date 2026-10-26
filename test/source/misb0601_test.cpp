@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -555,7 +556,7 @@ TEST_CASE("KLV ST 0601 pack fields reject malformed values", "[klv][misb0601]") 
 	append_field(fields, 122, hex("01 0E 00 00 00 00"));  // A fifth element
 	append_field(fields, 127, hex("1E 00"));  // Denominator 0
 	append_field(fields, 128, hex("05 01 02"));  // The length overruns the value
-	append_field(fields, 140, hex("0A 01 02 00 03 C0 04 03 41 47 4D"));  // Status bits above bit 11
+	append_field(fields, 140, hex("0B 80 01 02 00 03 92 04 03 41 47 4D"));  // A station ID that starts with 0x80
 	append_field(fields, 142, hex("03 00 00 5A"));  // An odd interval length
 
 	auto const uas = decode_packet<kv::uas_datalink_ls>(make_uas_packet(fields));
@@ -571,7 +572,8 @@ TEST_CASE("KLV ST 0601 pack fields reject malformed values", "[klv][misb0601]") 
 
 TEST_CASE("KLV ST 0601 pack fields decode their optional parts", "[klv][misb0601]") {
 	auto fields = byte_vector{};
-	append_field(fields, 81, hex("00 FF 64 7F 00 00 00 00 00 00 00 00 FF FF FF FF FF FF FF FF"));
+	auto const horizon_bytes = hex("00 FF 64 7F 7F FF FF FF 80 00 00 01 00 00 00 00 80 00 00 00");
+	append_field(fields, 81, horizon_bytes);
 	append_field(fields, 115, hex("81 00 00"));  // ID 128, empty text, no time stamp
 	append_field(fields, 122, hex("01 01 02 55 53"));  // Only the overflight country
 	append_field(fields, 130, hex("00 08 40 40 00 00 19 B0 00 00"));  // Unknown take-off, recovery without height
@@ -583,10 +585,13 @@ TEST_CASE("KLV ST 0601 pack fields decode their optional parts", "[klv][misb0601
 	auto const& horizon = uas->get<kv::image_horizon_pixel_pack>();
 	REQUIRE(horizon);
 	REQUIRE(horizon->locations);
-	CHECK(horizon->locations->latitude0 == Approx(-90.0));
+
+	// Signed int32 values over +/-(2^31 - 1), as in tags 82 to 89. The error value -2^31 decodes as NaN.
+	CHECK(horizon->locations->latitude0 == Approx(90.0));
 	CHECK(horizon->locations->longitude0 == Approx(-180.0));
-	CHECK(horizon->locations->latitude1 == Approx(90.0));
-	CHECK(horizon->locations->longitude1 == Approx(180.0));
+	CHECK(horizon->locations->latitude1 == Approx(0.0));
+	CHECK(std::isnan(horizon->locations->longitude1));
+	CHECK(encode_value(kv::image_horizon_pixel_pack::format, *horizon) == horizon_bytes);
 
 	CHECK(uas->get<kv::control_command>() == std::vector{kv::command_record{.id = 128}});
 	CHECK(
@@ -603,6 +608,45 @@ TEST_CASE("KLV ST 0601 pack fields decode their optional parts", "[klv][misb0601
 	    uas->get<kv::view_domain>() ==
 	    kv::view_ranges{.elevation = kv::view_interval{.start = -180.0, .range = 360.0}}
 	);
+}
+
+TEST_CASE("KLV ST 0601 weapons records ignore future status bits", "[klv][misb0601]") {
+	// Status 0x2004 sets bit 13, and status 2^35 sets bit 35. ST 0601 keeps bits 0 to 11 for future versions.
+	auto fields = byte_vector{};
+	append_field(fields, 140, hex("0A 01 02 00 03 C0 04 03 41 47 4D 0E 01 02 00 04 81 80 80 80 80 00 03 41 47 4D"));
+
+	auto const uas = decode_packet<kv::uas_datalink_ls>(make_uas_packet(fields));
+	REQUIRE(uas);
+	auto const launched = kv::weapons_store{
+	    .station_id = 1,
+	    .hardpoint_id = 2,
+	    .carriage_id = 0,
+	    .store_id = 3,
+	    .general_status = kv::weapon_status::launch,
+	    .engagement_status = 0,
+	    .weapon_type = "AGM",
+	};
+	auto off = launched;
+	off.store_id = 4;
+	off.general_status = kv::weapon_status::off;
+	CHECK(uas->get<kv::weapons_stores>() == std::vector{launched, off});
+}
+
+TEST_CASE("KLV ST 0601 display text names an undefined enumeration value by its number", "[klv][misb0601]") {
+	auto store = kv::weapons_store{.general_status = static_cast<kv::weapon_status>(200)};
+	CHECK(
+	    kv::weapons_store_codec{}.to_string(store)
+	    == "{station: 0, hardpoint: 0, carriage: 0, store: 0, status: 200, engagement: 0x0, type: \"\"}"
+	);
+}
+
+TEST_CASE("KLV ST 0601 outside air temperature has no error value", "[klv][misb0601]") {
+	constexpr auto format = kv::outside_air_temperature::format;
+	CHECK(format.decode(hex("80")) == -128.0);
+	CHECK(format.decode(hex("7F")) == 127.0);
+	CHECK(format.decode(hex("54")) == 84.0);  // The ST 0601 example
+	CHECK(encode_value(format, -128.0) == hex("80"));
+	CHECK(encode_value(format, -129.0) == std::unexpected(field_error::out_of_range));
 }
 
 TEST_CASE("KLV ST 0601 pack fields round-trip through a packet", "[klv][misb0601]") {

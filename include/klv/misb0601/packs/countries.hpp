@@ -100,7 +100,7 @@ struct countries_codec {
 		};
 		return std::format(
 		    "{{coding method: {}, overflight: {}, operator: {}, manufacture: {}}}",
-		    codec::enumeration<misb0102::classifying_country_coding>{}.to_string(value.coding_method),
+		    klv::detail::enum_text(value.coding_method),
 		    country(value.overflight_country),
 		    country(value.operator_country),
 		    country(value.country_of_manufacture)
